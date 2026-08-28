@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>篩選器 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main>
+  <h1>全市場篩選器</h1>
+
+  <div class="card">
+    <div class="flex" id="presets"></div>
+    <div class="grid cols-4 mt">
+      <div><label>月營收 YoY ≥ (%)</label><input type="number" id="p-rev_yoy_min" placeholder="如 10"></div>
+      <div><label>法人連續買超 ≥ (天)</label><input type="number" id="p-insti_buy_days" placeholder="如 3"></div>
+      <div><label>本益比 ≤</label><input type="number" id="p-pe_max" placeholder="如 15"></div>
+      <div><label>殖利率 ≥ (%)</label><input type="number" id="p-yield_min" placeholder="如 4"></div>
+      <div><label>股價淨值比 ≤</label><input type="number" id="p-pb_max" placeholder="如 2"></div>
+      <div><label>距52週高 ≤ (%)</label><input type="number" id="p-near_52w_high" placeholder="如 5"></div>
+      <div><label>量比 ≥ (倍)</label><input type="number" id="p-vol_surge" placeholder="如 2"></div>
+      <div><label>日成交額 ≥ (百萬)</label><input type="number" id="p-min_amount" placeholder="如 50（流動性門檻）"></div>
+    </div>
+    <div class="flex mt">
+      <label style="margin:0"><input type="checkbox" id="p-above_ma60" style="width:auto"> 站上60日線</label>
+      <label style="margin:0"><input type="checkbox" id="p-above_ma240" style="width:auto"> 站上年線</label>
+      <label style="margin:0"><input type="checkbox" id="p-rev_turn_pos" style="width:auto"> 營收YoY由負轉正</label>
+      <label style="margin:0"><input type="checkbox" id="p-rev_accel" style="width:auto"> 營收YoY連3月加速</label>
+      <label style="margin:0"><input type="checkbox" id="p-exclude_etf" style="width:auto" checked> 排除ETF</label>
+      <span class="spacer"></span>
+      <button id="btn-run">執行篩選</button>
+    </div>
+    <p class="muted" style="margin-bottom:0">
+      營收條件需先在儀表板抓「全市場月營收」；均線/法人連買需先「回填歷史」。命中前 10 名會自動預抓深度資料。
+    </p>
+  </div>
+
+  <div class="card mt">
+    <h2 id="result-title">結果</h2>
+    <div class="scroll-x">
+      <table class="data" id="results">
+        <thead><tr>
+          <th class="l">股票</th><th class="l">產業</th>
+          <th class="sortable" data-key="close">收盤<span class="arrow"></span></th>
+          <th class="sortable" data-key="change">漲跌<span class="arrow"></span></th>
+          <th class="sortable" data-key="amount">成交額(百萬)<span class="arrow"></span></th>
+          <th class="sortable" data-key="pe">PE<span class="arrow"></span></th>
+          <th class="sortable" data-key="dividend_yield">殖利率<span class="arrow"></span></th>
+          <th class="sortable" data-key="rev_yoy">營收YoY<span class="arrow"></span></th>
+          <th class="sortable" data-key="insti_net">法人淨買(張)<span class="arrow"></span></th>
+          <th class="sortable" data-key="vol_ratio">量比<span class="arrow"></span></th>
+          <th></th>
+        </tr></thead>
+        <tbody><tr><td colspan="11" class="muted l">選擇條件後執行篩選。</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script src="js/common.js"></script>
+<script>
+const FIELDS = ["rev_yoy_min","insti_buy_days","pe_max","yield_min","pb_max",
+                "near_52w_high","vol_surge","min_amount"];
+const CHECKS = ["above_ma60","above_ma240","rev_turn_pos","rev_accel","exclude_etf"];
+
+async function loadPresets() {
+  const presets = await api("/api/screener/presets");
+  const el = document.getElementById("presets");
+  el.innerHTML = `<span class="muted">快速套用：</span>` +
+    Object.entries(presets).map(([key, p]) =>
+      `<button class="ghost small" data-key="${key}">${p.label}</button>`).join("");
+  el.addEventListener("click", e => {
+    const key = e.target.dataset.key;
+    if (!key) return;
+    clearForm();
+    const params = presets[key].params;
+    for (const [k, v] of Object.entries(params)) {
+      const inp = document.getElementById("p-" + k);
+      if (!inp) continue;
+      if (inp.type === "checkbox") inp.checked = !!v; else inp.value = v;
+    }
+    runScreen();
+  });
+}
+
+function clearForm() {
+  FIELDS.forEach(f => document.getElementById("p-" + f).value = "");
+  CHECKS.forEach(c => document.getElementById("p-" + c).checked = c === "exclude_etf");
+}
+
+function collectParams() {
+  const params = {};
+  FIELDS.forEach(f => {
+    const v = document.getElementById("p-" + f).value;
+    if (v !== "") params[f] = parseFloat(v);
+  });
+  CHECKS.forEach(c => {
+    if (document.getElementById("p-" + c).checked) params[c] = true;
+  });
+  return params;
+}
+
+let currentHits = [];
+let sortState = { key: "amount", dir: -1 };
+
+function renderResults() {
+  const { key, dir } = sortState;
+  currentHits.sort((a, b) => {
+    const va = a[key], vb = b[key];
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return (va - vb) * dir;
+  });
+  document.getElementById("result-title").textContent = `結果（${currentHits.length} 檔）`;
+  const tbody = document.querySelector("#results tbody");
+  tbody.innerHTML = currentHits.length ? currentHits.map(r => `
+    <tr>
+      <td class="l"><a href="stock.html?id=${r.stock_id}">${r.stock_id} ${r.name}</a></td>
+      <td class="l muted">${r.industry || "—"}</td>
+      <td>${fmt.num(r.close)}</td>
+      <td class="${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
+      <td>${fmt.int((r.amount || 0) / 1e6)}</td>
+      <td>${fmt.num(r.pe, 1)}</td>
+      <td>${fmt.pct(r.dividend_yield)}</td>
+      <td class="${fmt.cls(r.rev_yoy)}">${r.rev_yoy != null ? fmt.signPct(r.rev_yoy) : "—"}</td>
+      <td>${r.insti_net != null ? fmt.int(r.insti_net / 1000) : "—"}</td>
+      <td>${fmt.num(r.vol_ratio)}</td>
+      <td><button class="ghost small" onclick="addWatch('${r.stock_id}', this)">＋觀察</button></td>
+    </tr>`).join("")
+    : '<tr><td colspan="11" class="muted l">無符合條件的個股 — 檢查是否已抓月營收/回填歷史，或放寬條件。</td></tr>';
+  document.querySelectorAll("#results th.sortable").forEach(th => {
+    const active = th.dataset.key === key;
+    th.classList.toggle("active", active);
+    th.querySelector(".arrow").textContent = active ? (dir === 1 ? "▲" : "▼") : "";
+  });
+}
+
+async function runScreen() {
+  const btn = document.getElementById("btn-run");
+  btn.disabled = true; btn.textContent = "篩選中…";
+  try {
+    currentHits = await api("/api/screener/run", { method: "POST", body: { params: collectParams() } });
+    sortState = { key: "amount", dir: -1 };
+    renderResults();
+  } catch (err) { toast("篩選失敗：" + err.message); }
+  btn.disabled = false; btn.textContent = "執行篩選";
+}
+
+document.querySelector("#results thead").addEventListener("click", e => {
+  const th = e.target.closest("th.sortable");
+  if (!th) return;
+  const key = th.dataset.key;
+  sortState = sortState.key === key ? { key, dir: sortState.dir * -1 } : { key, dir: -1 };
+  renderResults();
+});
+
+async function addWatch(sid, btn) {
+  await api(`/api/watchlist/${sid}`, { method: "POST", body: { tier: "research" } });
+  btn.textContent = "✓已加入"; btn.disabled = true;
+}
+
+document.getElementById("btn-run").addEventListener("click", runScreen);
+loadPresets();
+</script>
+</body>
+</html>

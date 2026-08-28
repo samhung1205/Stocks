@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>觀察名單 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main>
+  <div class="flex">
+    <h1>觀察名單</h1>
+    <span class="spacer"></span>
+    <button id="btn-rt" class="ghost">更新盤中報價</button>
+    <span class="muted" id="rt-info"></span>
+  </div>
+
+  <div id="tiers"></div>
+</main>
+
+<script src="js/common.js"></script>
+<script>
+const TIERS = [["holding", "持有中"], ["waiting", "等買點"], ["research", "研究中"]];
+let allRows = [];
+
+async function load() {
+  allRows = await api("/api/watchlist");
+  const wrap = document.getElementById("tiers");
+  wrap.innerHTML = "";
+  for (const [tier, label] of TIERS) {
+    const rows = allRows.filter(r => r.tier === tier);
+    const card = document.createElement("div");
+    card.className = "card mt";
+    card.innerHTML = `
+      <h2>${label}（${rows.length}）</h2>
+      <div class="scroll-x"><table class="data">
+        <thead><tr>
+          <th class="l">股票</th><th class="l">產業</th><th>收盤</th><th>漲跌</th>
+          <th class="rt-col">盤中價</th><th>PE</th><th>殖利率</th><th>警訊</th>
+          <th class="l">備註</th><th></th>
+        </tr></thead>
+        <tbody>${rows.length ? rows.map(r => `
+          <tr data-sid="${r.stock_id}">
+            <td class="l"><a href="stock.html?id=${r.stock_id}">${r.stock_id} ${r.name}</a></td>
+            <td class="l muted">${r.industry || "—"}</td>
+            <td>${fmt.num(r.close)}</td>
+            <td class="${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
+            <td class="rt-cell muted">—</td>
+            <td>${fmt.num(r.pe, 1)}</td>
+            <td>${fmt.pct(r.dividend_yield)}</td>
+            <td>${r.alerts.length
+              ? `<span class="badge warn" title="${r.alerts.map(a => a.message).join("&#10;")}">${r.alerts.length} 項</span>`
+              : '<span class="muted">—</span>'}</td>
+            <td class="l note-cell" style="max-width:220px;white-space:normal">
+              <span class="muted">${r.note || ""}</span></td>
+            <td>
+              <select class="small tier-sel" style="width:96px">
+                ${TIERS.map(([t, l]) => `<option value="${t}" ${t === r.tier ? "selected" : ""}>${l}</option>`).join("")}
+              </select>
+              <button class="ghost small btn-del">移除</button>
+            </td>
+          </tr>`).join("")
+          : '<tr><td colspan="10" class="muted l">此分級沒有個股。</td></tr>'}
+        </tbody></table></div>`;
+    wrap.appendChild(card);
+  }
+
+  wrap.querySelectorAll(".tier-sel").forEach(sel => sel.addEventListener("change", async e => {
+    const sid = e.target.closest("tr").dataset.sid;
+    const row = allRows.find(r => r.stock_id === sid);
+    await api(`/api/watchlist/${sid}`, { method: "POST",
+      body: { tier: e.target.value, note: row?.note || "" } });
+    load();
+  }));
+  wrap.querySelectorAll(".btn-del").forEach(btn => btn.addEventListener("click", async e => {
+    const sid = e.target.closest("tr").dataset.sid;
+    if (!confirm(`確定將 ${sid} 移出觀察名單？`)) return;
+    await api(`/api/watchlist/${sid}`, { method: "DELETE" });
+    load();
+  }));
+}
+
+document.getElementById("btn-rt").addEventListener("click", async e => {
+  if (!allRows.length) return;
+  e.target.disabled = true;
+  try {
+    const ids = allRows.map(r => r.stock_id).join(",");
+    const rt = await api(`/api/realtime?ids=${ids}`);
+    for (const q of rt.quotes) {
+      const tr = document.querySelector(`tr[data-sid="${q.stock_id}"]`);
+      if (!tr || q.last == null) continue;
+      const cell = tr.querySelector(".rt-cell");
+      const chg = q.yesterday ? (q.last / q.yesterday - 1) * 100 : null;
+      cell.textContent = `${fmt.num(q.last)} (${fmt.signPct(chg)})`;
+      cell.className = "rt-cell " + fmt.cls(chg);
+    }
+    document.getElementById("rt-info").textContent =
+      `來源 ${rt.provider}（延遲約 ${rt.delay_seconds} 秒）`;
+  } catch (err) { toast("即時報價失敗：" + err.message); }
+  e.target.disabled = false;
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交易日誌 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main>
+  <h1>交易日誌</h1>
+
+  <div class="grid cols-4" id="perf-cards">
+    <div class="card"><div class="k">已實現損益</div><div class="v" id="pf-pnl">—</div></div>
+    <div class="card"><div class="k">勝率</div><div class="v" id="pf-win">—</div><div class="muted" id="pf-n">—</div></div>
+    <div class="card"><div class="k">平均賺 / 平均賠</div><div class="v" id="pf-avg">—</div></div>
+    <div class="card"><div class="k">盈虧比</div><div class="v" id="pf-factor">—</div>
+      <div class="muted">框架：盈虧比 × 勝率決定期望值</div></div>
+  </div>
+
+  <div class="grid cols-2 mt">
+    <div class="card">
+      <div class="flex">
+        <h2 style="margin:0">買進前八句話（交易計畫）</h2>
+        <span class="spacer"></span>
+        <button id="btn-draft" class="ghost small" type="button">帶入系統草稿</button>
+      </div>
+      <p class="muted" style="margin:6px 0 0">
+        1、2、3、4 句需要你自己的判斷（原因、成長驅動力、市場預期、你的優勢）— 這些本質上無法自動生成。
+        5、7 句可按右上角「帶入系統草稿」由資料自動草擬，再自行修改。
+      </p>
+      <label>股票代號 *</label><input id="pl-stock_id" placeholder="2330">
+      <label>投資週期</label>
+      <select id="pl-horizon">
+        <option value="long">長期投資（1-5年）</option>
+        <option value="swing" selected>中期波段（1-12個月）</option>
+        <option value="short">短線交易（數天-數週）</option>
+      </select>
+      <label>1. 我買這家公司是因為什麼？</label><textarea id="pl-q1_reason" rows="2"></textarea>
+      <label>2. 未來獲利成長來自哪裡？</label><textarea id="pl-q2_growth_from" rows="2"></textarea>
+      <label>3. 市場目前的主要預期是什麼？</label><textarea id="pl-q3_market_view" rows="2"></textarea>
+      <label>4. 我的看法與市場有何不同？</label><textarea id="pl-q4_my_edge" rows="2"></textarea>
+      <label>5. 目前價格已經反映多少成長？</label><textarea id="pl-q5_priced_in" rows="2"></textarea>
+      <label>6. 下一個催化事件是什麼？何時？</label><textarea id="pl-q6_catalyst" rows="2"></textarea>
+      <label>7. 哪些數據出現代表我判斷錯了？</label><textarea id="pl-q7_wrong_signal" rows="2"></textarea>
+
+      <fieldset class="mt">
+        <legend>8. 風險與部位（先決定最多虧多少，再反推部位）</legend>
+        <div class="grid cols-3" style="padding:10px">
+          <div><label>最大可虧金額 *</label><input type="number" id="pl-q8_max_loss" placeholder="如 30000"></div>
+          <div><label>進場價 *</label><input type="number" id="pl-entry_price" step="0.01"></div>
+          <div><label>停損價 *</label><input type="number" id="pl-stop_price" step="0.01"></div>
+          <div><label>目標價</label><input type="number" id="pl-target_price" step="0.01"></div>
+          <div style="grid-column:span 2"><label>建議部位</label>
+            <div id="pos-suggest" class="muted" style="padding:8px 0">填進場/停損/最大虧損後自動計算</div></div>
+        </div>
+      </fieldset>
+      <div class="flex">
+        <button id="btn-save-plan">建立交易計畫</button>
+        <span class="muted" id="plan-hint"></span>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>記錄成交</h2>
+        <div class="grid cols-3">
+          <div><label>代號 *</label><input id="tr-stock_id" placeholder="2330"></div>
+          <div><label>方向 *</label>
+            <select id="tr-side"><option value="buy">買進</option><option value="sell">賣出</option></select></div>
+          <div><label>日期</label><input type="date" id="tr-date"></div>
+          <div><label>股數 *</label><input type="number" id="tr-shares" placeholder="1000"></div>
+          <div><label>價格 *</label><input type="number" id="tr-price" step="0.01"></div>
+          <div><label>關聯計畫</label>
+            <select id="tr-plan_id"><option value="">（無）</option></select></div>
+        </div>
+        <div class="flex mt">
+          <button id="btn-add-trade">記錄成交</button>
+          <span class="muted">手續費/證交稅自動估算（可於 .env 調整折數）</span>
+        </div>
+      </div>
+
+      <div class="card mt">
+        <h2>目前持倉（未實現）</h2>
+        <div class="scroll-x"><table class="data" id="pos-table">
+          <thead><tr><th class="l">股票</th><th>股數</th><th>均價</th><th>市價</th><th>市值</th><th>損益</th><th>%</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+
+      <div class="card mt">
+        <h2>進行中的計畫</h2>
+        <div id="plans-list" class="scroll-x"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt">
+    <h2>成交紀錄</h2>
+    <div class="scroll-x"><table class="data" id="trades-table">
+      <thead><tr><th class="l">日期</th><th class="l">股票</th><th>方向</th><th>股數</th><th>價格</th><th>手續費</th><th>證交稅</th></tr></thead>
+      <tbody></tbody></table></div>
+  </div>
+</main>
+
+<script src="js/common.js"></script>
+<script>
+/* 部位計算 */
+async function calcPosition() {
+  const entry = parseFloat(document.getElementById("pl-entry_price").value);
+  const stop = parseFloat(document.getElementById("pl-stop_price").value);
+  const maxLoss = parseFloat(document.getElementById("pl-q8_max_loss").value);
+  const el = document.getElementById("pos-suggest");
+  if (!(entry && stop && maxLoss)) return;
+  try {
+    const r = await api("/api/journal/position-size",
+      { method: "POST", body: { entry, stop, max_loss: maxLoss } });
+    if (r.error) { el.textContent = r.error; el.className = "warn"; return; }
+    el.className = "";
+    el.innerHTML = `每股風險 <b>${r.risk_per_share}</b> 元 → 最多 <b>${fmt.int(r.max_shares)}</b> 股
+      （整張 <b>${r.suggest_lots}</b> 張）｜需要資金約 ${fmt.int(r.capital_needed)} 元`;
+  } catch (err) { el.textContent = err.message; }
+}
+["pl-entry_price", "pl-stop_price", "pl-q8_max_loss"].forEach(id =>
+  document.getElementById(id).addEventListener("input", calcPosition));
+
+/* 建立計畫 */
+document.getElementById("btn-save-plan").addEventListener("click", async () => {
+  const payload = {};
+  document.querySelectorAll("[id^='pl-']").forEach(el => {
+    const key = el.id.slice(3);
+    payload[key] = el.type === "number" ? (el.value ? parseFloat(el.value) : null) : el.value.trim();
+  });
+  if (!payload.stock_id) { toast("請填股票代號"); return; }
+  try {
+    const r = await api("/api/journal/plans", { method: "POST", body: payload });
+    const hint = document.getElementById("plan-hint");
+    if (r.missing.length) {
+      hint.innerHTML = `<span class="warn">已建立，但還有 ${r.missing.length} 句未寫：${r.missing[0]} …</span>`;
+    } else {
+      hint.textContent = "✓ 八句話已寫齊，紀律完成";
+    }
+    toast("交易計畫已建立 #" + r.id);
+    loadPlans();
+  } catch (err) { toast("失敗：" + err.message); }
+});
+
+/* 記錄成交 */
+document.getElementById("btn-add-trade").addEventListener("click", async () => {
+  const payload = {
+    stock_id: document.getElementById("tr-stock_id").value.trim(),
+    side: document.getElementById("tr-side").value,
+    date: document.getElementById("tr-date").value || undefined,
+    shares: parseFloat(document.getElementById("tr-shares").value),
+    price: parseFloat(document.getElementById("tr-price").value),
+    plan_id: document.getElementById("tr-plan_id").value || null,
+  };
+  try {
+    await api("/api/journal/trades", { method: "POST", body: payload });
+    toast("已記錄成交");
+    loadTrades(); loadPositions(); loadPerf();
+  } catch (err) { toast("失敗：" + err.message); }
+});
+
+/* 載入區塊 */
+async function loadPerf() {
+  const p = await api("/api/journal/performance");
+  const pnl = document.getElementById("pf-pnl");
+  pnl.textContent = fmt.int(p.total_pnl);
+  pnl.className = "v " + fmt.cls(p.total_pnl);
+  document.getElementById("pf-win").textContent = p.win_rate != null ? fmt.pct(p.win_rate) : "—";
+  document.getElementById("pf-n").textContent = `已平倉 ${p.closed_trades} 筆`;
+  document.getElementById("pf-avg").textContent = `${fmt.int(p.avg_win)} / ${fmt.int(p.avg_loss)}`;
+  document.getElementById("pf-factor").textContent = p.profit_factor ?? "—";
+}
+
+async function loadPositions() {
+  const rows = await api("/api/journal/positions");
+  document.querySelector("#pos-table tbody").innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td class="l"><a href="stock.html?id=${r.stock_id}">${r.stock_id} ${r.name || ""}</a></td>
+      <td>${fmt.int(r.shares)}</td><td>${fmt.num(r.avg_cost)}</td>
+      <td>${fmt.num(r.last)}</td><td>${fmt.int(r.market_value)}</td>
+      <td class="${fmt.cls(r.unrealized)}">${fmt.int(r.unrealized)}</td>
+      <td class="${fmt.cls(r.unrealized)}">${fmt.signPct(r.unrealized_pct)}</td>
+    </tr>`).join("") : '<tr><td colspan="7" class="muted l">無持倉</td></tr>';
+}
+
+async function loadPlans() {
+  const plans = await api("/api/journal/plans?status=open");
+  const sel = document.getElementById("tr-plan_id");
+  sel.innerHTML = '<option value="">（無）</option>' + plans.map(p =>
+    `<option value="${p.id}">#${p.id} ${p.stock_id} ${p.name || ""}</option>`).join("");
+  document.getElementById("plans-list").innerHTML = plans.length ? `
+    <table class="data"><thead><tr>
+      <th class="l">計畫</th><th>進場</th><th>停損</th><th>目標</th><th>最大虧損</th><th>八句話</th><th></th>
+    </tr></thead><tbody>${plans.map(p => `
+      <tr>
+        <td class="l">#${p.id} <a href="stock.html?id=${p.stock_id}">${p.stock_id} ${p.name || ""}</a>
+          <span class="muted">${p.created_at?.slice(0, 10) || ""}</span></td>
+        <td>${fmt.num(p.entry_price)}</td><td>${fmt.num(p.stop_price)}</td>
+        <td>${fmt.num(p.target_price)}</td><td>${fmt.int(p.q8_max_loss)}</td>
+        <td>${p.missing.length ? `<span class="badge warn">缺 ${p.missing.length} 句</span>` : "✓ 完整"}</td>
+        <td><button class="ghost small" onclick="closePlan(${p.id})">結案</button></td>
+      </tr>`).join("")}</tbody></table>`
+    : '<p class="muted">尚無進行中的計畫。</p>';
+}
+
+async function closePlan(id) {
+  await api(`/api/journal/plans/${id}/status`, { method: "POST", body: { status: "closed" } });
+  loadPlans();
+}
+
+async function loadTrades() {
+  const rows = await api("/api/journal/trades");
+  document.querySelector("#trades-table tbody").innerHTML = rows.length ? rows.map(t => `
+    <tr>
+      <td class="l">${t.date}</td>
+      <td class="l"><a href="stock.html?id=${t.stock_id}">${t.stock_id} ${t.name || ""}</a></td>
+      <td class="${t.side === "buy" ? "up" : "down"}">${t.side === "buy" ? "買進" : "賣出"}</td>
+      <td>${fmt.int(t.shares)}</td><td>${fmt.num(t.price)}</td>
+      <td>${fmt.int(t.fee)}</td><td>${fmt.int(t.tax)}</td>
+    </tr>`).join("") : '<tr><td colspan="7" class="muted l">尚無成交紀錄</td></tr>';
+}
+
+/* 系統草稿：把可由數據回答的部分（估值反映程度、警訊/技術停損點）先草擬好 */
+async function loadDraft(sid) {
+  if (!sid) { toast("請先填股票代號"); return; }
+  const btn = document.getElementById("btn-draft");
+  btn.disabled = true; btn.textContent = "草擬中…";
+  try {
+    const d = await api(`/api/journal/draft-plan/${sid}`);
+    if (d.q5_priced_in) document.getElementById("pl-q5_priced_in").value = d.q5_priced_in;
+    if (d.q7_wrong_signal) document.getElementById("pl-q7_wrong_signal").value = d.q7_wrong_signal;
+    if (d.q6_catalyst) document.getElementById("pl-q6_catalyst").value = d.q6_catalyst;
+    if (d.entry_price != null) document.getElementById("pl-entry_price").value = d.entry_price;
+    if (d.stop_price != null) document.getElementById("pl-stop_price").value = d.stop_price;
+    calcPosition();
+    toast("已帶入系統草稿，記得填 1-4 句與確認金額");
+  } catch (err) { toast("草擬失敗：" + err.message); }
+  btn.disabled = false; btn.textContent = "帶入系統草稿";
+}
+document.getElementById("btn-draft").addEventListener("click", () =>
+  loadDraft(document.getElementById("pl-stock_id").value.trim()));
+
+/* 從個股頁帶入代號，並自動草擬 */
+const planSid = qs("plan");
+if (planSid) {
+  document.getElementById("pl-stock_id").value = planSid;
+  loadDraft(planSid);
+}
+document.getElementById("tr-date").value = new Date().toISOString().slice(0, 10);
+
+loadPerf(); loadPositions(); loadPlans(); loadTrades();
+</script>
+</body>
+</html>

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>個股 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/echarts.min.js"></script>
+<style>
+  .stock-layout { display: grid; grid-template-columns: 1fr 360px; gap: 14px; }
+  @media (max-width: 1100px) { .stock-layout { grid-template-columns: 1fr; } }
+  .head-price { font-size: 30px; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <div class="flex" id="stock-head">
+    <h1 id="title">載入中…</h1>
+    <span class="badge" id="mkt-badge"></span>
+    <span class="badge" id="ind-badge"></span>
+    <span class="spacer"></span>
+    <select id="watch-tier" style="width:130px">
+      <option value="">－ 加入觀察名單 －</option>
+      <option value="research">研究中</option>
+      <option value="waiting">等買點</option>
+      <option value="holding">持有中</option>
+      <option value="__remove__">移出名單</option>
+    </select>
+    <button id="btn-refresh" class="ghost">重新抓取資料</button>
+  </div>
+
+  <div class="flex" style="align-items:baseline">
+    <span class="head-price" id="price">—</span>
+    <span id="chg" style="font-size:18px">—</span>
+    <span class="muted" id="qdate">（收盤價，每交易日收盤後更新一次）</span>
+    <button id="btn-live" class="ghost small" type="button">查看即時價</button>
+    <span id="live-quote" class="muted"></span>
+    <span class="spacer"></span>
+    <span class="muted" id="val-line">—</span>
+  </div>
+
+  <div class="stock-layout mt">
+    <div>
+      <div class="tabs" id="tabs">
+        <button data-tab="kline" class="active">K線量價</button>
+        <button data-tab="revenue">月營收</button>
+        <button data-tab="profit">獲利能力</button>
+        <button data-tab="health">財務品質</button>
+        <button data-tab="valuation">估值</button>
+        <button data-tab="chips">籌碼</button>
+      </div>
+
+      <div class="card tab-panel" id="panel-kline">
+        <div id="chart-kline" class="chart tall"></div>
+        <div class="muted" id="tech-line"></div>
+      </div>
+      <div class="card tab-panel" id="panel-revenue" style="display:none">
+        <div id="chart-revenue" class="chart tall"></div>
+        <p class="muted">單月年增率易受工作天數/農曆年影響，同時看 3 個月累計年增率（框架二之3）。</p>
+      </div>
+      <div class="card tab-panel" id="panel-profit" style="display:none">
+        <div id="chart-margins" class="chart"></div>
+        <div id="chart-eps" class="chart short"></div>
+      </div>
+      <div class="card tab-panel" id="panel-health" style="display:none">
+        <div id="chart-cashflow" class="chart"></div>
+        <div id="chart-working" class="chart short"></div>
+        <p class="muted">營業現金流應跟得上淨利；應收/存貨增速若遠高於營收增速是警訊（框架二之3）。</p>
+      </div>
+      <div class="card tab-panel" id="panel-valuation" style="display:none">
+        <div id="chart-pe" class="chart"></div>
+        <div id="val-summary" class="mt"></div>
+      </div>
+      <div class="card tab-panel" id="panel-chips" style="display:none">
+        <div id="chart-insti" class="chart"></div>
+        <div id="chart-margin-bal" class="chart short"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>系統判讀摘要 <span class="badge" id="tilt-badge"></span></h2>
+        <div id="narrative">載入中…</div>
+      </div>
+      <div class="card mt">
+        <h2>評分表 <span class="muted" id="score-total"></span></h2>
+        <div id="scorecard">載入中…</div>
+        <label>備註</label>
+        <textarea id="score-note" rows="2"></textarea>
+        <div class="flex mt">
+          <button id="btn-save-score" class="small">儲存評分</button>
+          <span class="muted" id="score-verdict"></span>
+        </div>
+      </div>
+      <div class="card mt">
+        <h2>警訊</h2>
+        <div id="alerts">載入中…</div>
+      </div>
+      <div class="card mt">
+        <h2>治理人工查核（無免費結構化資料）</h2>
+        <div id="checklist"></div>
+      </div>
+      <div class="card mt">
+        <h2>下一步</h2>
+        <div class="flex">
+          <a class="btn" id="link-plan" href="#">寫買進前八句話 →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="js/common.js"></script>
+<script>
+const SID = qs("id");
+if (!SID) location.href = "index.html";
+document.getElementById("link-plan").href = `journal.html?plan=${SID}`;
+
+const charts = {};
+function chartOnce(id) {
+  if (!charts[id]) charts[id] = makeChart(id);
+  return charts[id];
+}
+
+/* ── 頁籤 ── */
+const loaded = {};
+document.getElementById("tabs").addEventListener("click", e => {
+  const tab = e.target.dataset.tab;
+  if (!tab) return;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b === e.target));
+  document.querySelectorAll(".tab-panel").forEach(p => p.style.display = "none");
+  document.getElementById(`panel-${tab}`).style.display = "";
+  loadTab(tab);
+  Object.values(charts).forEach(c => c.resize());
+});
+
+async function loadTab(tab) {
+  if (loaded[tab]) return;
+  loaded[tab] = true;
+  try {
+    if (tab === "kline") await drawKline();
+    if (tab === "revenue") await drawRevenue();
+    if (tab === "profit") await drawProfit();
+    if (tab === "health") await drawHealth();
+    if (tab === "valuation") await drawValuation();
+    if (tab === "chips") await drawChips();
+  } catch (err) { toast(`${tab} 載入失敗：${err.message}`); loaded[tab] = false; }
+}
+
+/* ── 頭部 ── */
+async function loadHead() {
+  const ov = await api(`/api/stocks/${SID}`);
+  const { info, quote, valuation, watchlist } = ov;
+  document.title = `${SID} ${info.name} — 台股分析`;
+  document.getElementById("title").textContent = `${SID} ${info.name}`;
+  document.getElementById("mkt-badge").textContent = info.market === "twse" ? "上市" : "上櫃";
+  document.getElementById("ind-badge").textContent = info.industry || "—";
+  if (quote) {
+    document.getElementById("price").textContent = fmt.num(quote.close);
+    const chg = document.getElementById("chg");
+    const pct = quote.change != null && quote.close ? quote.change / (quote.close - quote.change) * 100 : null;
+    chg.textContent = `${fmt.sign(quote.change)} (${fmt.signPct(pct)})`;
+    chg.className = fmt.cls(quote.change);
+    document.getElementById("qdate").textContent = quote.date;
+  }
+  if (valuation) {
+    document.getElementById("val-line").textContent =
+      `PE ${fmt.num(valuation.pe, 1)}｜PB ${fmt.num(valuation.pb, 2)}｜殖利率 ${fmt.pct(valuation.dividend_yield)}`;
+  }
+  if (watchlist) document.getElementById("watch-tier").value = watchlist.tier;
+}
+
+document.getElementById("watch-tier").addEventListener("change", async e => {
+  const v = e.target.value;
+  if (!v) return;
+  if (v === "__remove__") {
+    await api(`/api/watchlist/${SID}`, { method: "DELETE" });
+    e.target.value = "";
+    toast("已移出觀察名單");
+  } else {
+    await api(`/api/watchlist/${SID}`, { method: "POST", body: { tier: v } });
+    toast("已加入觀察名單");
+  }
+});
+
+document.getElementById("btn-refresh").addEventListener("click", async e => {
+  e.target.disabled = true; e.target.textContent = "抓取中…";
+  try {
+    await api(`/api/stocks/${SID}/deep?force=true`);
+    toast("資料已更新，重新載入頁面");
+    location.reload();
+  } catch (err) { toast("失敗：" + err.message); e.target.disabled = false; }
+});
+
+document.getElementById("btn-live").addEventListener("click", async e => {
+  e.target.disabled = true; e.target.textContent = "查詢中…";
+  const el = document.getElementById("live-quote");
+  try {
+    const rt = await api(`/api/realtime?ids=${SID}`);
+    const q = rt.quotes[0];
+    if (!q || q.last == null) {
+      el.textContent = "目前查無即時報價（非交易時段或代號異常）";
+    } else {
+      const chg = q.yesterday ? (q.last / q.yesterday - 1) * 100 : null;
+      el.innerHTML = `即時 <b class="${fmt.cls(chg)}">${fmt.num(q.last)} (${fmt.signPct(chg)})</b>
+        ｜來源 ${rt.provider}（延遲約 ${rt.delay_seconds} 秒）${q.time ? "｜" + q.time : ""}`;
+    }
+  } catch (err) { el.textContent = "查詢失敗：" + err.message; }
+  e.target.disabled = false; e.target.textContent = "查看即時價";
+});
+
+/* ── K線 ── */
+function ma(closes, n) {
+  return closes.map((_, i) =>
+    i + 1 < n ? null : +(closes.slice(i + 1 - n, i + 1).reduce((a, b) => a + b, 0) / n).toFixed(2));
+}
+
+async function drawKline() {
+  let rows = await api(`/api/stocks/${SID}/kline?days=500`);
+  if (rows.length < 30) {  // 深度抓取可能剛在背景開始 → 稍候再試一次
+    await new Promise(r => setTimeout(r, 4000));
+    rows = await api(`/api/stocks/${SID}/kline?days=500`);
+  }
+  if (!rows.length) {
+    document.getElementById("chart-kline").innerHTML = '<p class="muted">尚無K線資料，按「重新抓取資料」。</p>';
+    return;
+  }
+  const dates = rows.map(r => r.date);
+  const closes = rows.map(r => r.close);
+  const k = rows.map(r => [r.open, r.close, r.low, r.high]);
+  const vols = rows.map((r, i) => ({
+    value: r.volume / 1000,
+    itemStyle: { color: r.close >= r.open ? CHART_THEME.UP : CHART_THEME.DOWN, opacity: .6 },
+  }));
+  const mas = { MA20: ma(closes, 20), MA60: ma(closes, 60), MA120: ma(closes, 120), MA240: ma(closes, 240) };
+  const maColors = { MA20: "#e8a33d", MA60: "#4f8ef7", MA120: "#b07ce8", MA240: "#8b93a3" };
+  chartOnce("chart-kline").setOption(baseOption({
+    tooltip: { trigger: "axis", axisPointer: { type: "cross" },
+      backgroundColor: "#1e222b", borderColor: "#2a2f3a", textStyle: { color: "#e6e9ef", fontSize: 12 } },
+    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    grid: [{ left: 64, right: 20, top: 34, height: "58%" },
+           { left: 64, right: 20, top: "76%", height: "16%" }],
+    xAxis: [
+      { type: "category", data: dates, ...axisStyle() },
+      { type: "category", gridIndex: 1, data: dates, axisLabel: { show: false }, ...axisStyle() },
+    ],
+    yAxis: [
+      { type: "value", scale: true, ...axisStyle() },
+      { type: "value", gridIndex: 1, ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v) } },
+    ],
+    dataZoom: [
+      { type: "inside", xAxisIndex: [0, 1], start: 55, end: 100 },
+      { type: "slider", xAxisIndex: [0, 1], bottom: 0, height: 16,
+        borderColor: "#2a2f3a", backgroundColor: "#171a21" },
+    ],
+    series: [
+      { name: SID, type: "candlestick", data: k,
+        itemStyle: { color: CHART_THEME.UP, color0: CHART_THEME.DOWN,
+                     borderColor: CHART_THEME.UP, borderColor0: CHART_THEME.DOWN } },
+      ...Object.entries(mas).map(([name, data]) => ({
+        name, type: "line", data, showSymbol: false,
+        lineStyle: { width: 1.2, color: maColors[name] }, itemStyle: { color: maColors[name] } })),
+      { name: "成交量(張)", type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: vols },
+    ],
+  }));
+  const t = await api(`/api/stocks/${SID}/technical`);
+  if (t.close) {
+    document.getElementById("tech-line").textContent =
+      `52週高 ${fmt.num(t.high_52w)}（距高點 ${fmt.pct(t.off_high_pct)}）｜52週低 ${fmt.num(t.low_52w)}｜` +
+      `量比 ${fmt.num(t.vol_ratio)}｜${t.above_ma60 ? "✓站上60日線" : "✗跌破60日線"}｜${t.above_ma240 ? "✓站上年線" : "✗年線之下"}`;
+  }
+}
+
+/* ── 月營收 ── */
+async function drawRevenue() {
+  const rows = await api(`/api/stocks/${SID}/revenue`);
+  if (!rows.length) {
+    document.getElementById("chart-revenue").innerHTML = '<p class="muted">尚無月營收資料。</p>';
+    return;
+  }
+  chartOnce("chart-revenue").setOption(baseOption({
+    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    grid: { left: 64, right: 56, top: 34, bottom: 30 },
+    xAxis: { type: "category", data: rows.map(r => r.ym), ...axisStyle() },
+    yAxis: [
+      { type: "value", name: "營收(億)", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v / 1e8) } },
+      { type: "value", name: "%", position: "right", splitLine: { show: false }, ...axisStyle() },
+    ],
+    series: [
+      { name: "月營收", type: "bar", data: rows.map(r => r.revenue),
+        itemStyle: { color: "rgba(79,142,247,.55)" } },
+      { name: "YoY%", type: "line", yAxisIndex: 1, showSymbol: false,
+        data: rows.map(r => r.yoy), lineStyle: { color: CHART_THEME.UP, width: 2 } },
+      { name: "累計YoY%", type: "line", yAxisIndex: 1, showSymbol: false,
+        data: rows.map(r => r.acc_yoy), lineStyle: { color: CHART_THEME.WARN, width: 1.5, type: "dashed" } },
+    ],
+  }));
+}
+
+/* ── 獲利能力 ── */
+async function drawProfit() {
+  const rows = await api(`/api/stocks/${SID}/financials`);
+  if (!rows.length) {
+    document.getElementById("chart-margins").innerHTML = '<p class="muted">尚無財報資料。</p>';
+    return;
+  }
+  const q = rows.map(r => r.quarter);
+  chartOnce("chart-margins").setOption(baseOption({
+    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    xAxis: { type: "category", data: q, ...axisStyle() },
+    yAxis: { type: "value", name: "%", ...axisStyle() },
+    series: [
+      { name: "毛利率", type: "line", data: rows.map(r => r.gross_margin), showSymbol: false, lineStyle: { width: 2 } },
+      { name: "營益率", type: "line", data: rows.map(r => r.op_margin), showSymbol: false, lineStyle: { width: 2 } },
+      { name: "淨利率", type: "line", data: rows.map(r => r.net_margin), showSymbol: false, lineStyle: { width: 2 } },
+      { name: "ROE(近四季)", type: "line", data: rows.map(r => r.roe_ttm), showSymbol: false,
+        lineStyle: { width: 1.5, type: "dashed", color: CHART_THEME.WARN } },
+    ],
+  }));
+  chartOnce("chart-eps").setOption(baseOption({
+    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    xAxis: { type: "category", data: q, ...axisStyle() },
+    yAxis: { type: "value", name: "EPS", ...axisStyle() },
+    series: [{ name: "單季EPS", type: "bar", data: rows.map(r => r.eps),
+               itemStyle: { color: "rgba(240,82,79,.6)" } }],
+  }));
+}
+
+/* ── 財務品質 ── */
+async function drawHealth() {
+  const rows = await api(`/api/stocks/${SID}/financials`);
+  if (!rows.length) {
+    document.getElementById("chart-cashflow").innerHTML = '<p class="muted">尚無財報資料。</p>';
+    return;
+  }
+  const q = rows.map(r => r.quarter);
+  chartOnce("chart-cashflow").setOption(baseOption({
+    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    xAxis: { type: "category", data: q, ...axisStyle() },
+    yAxis: { type: "value", name: "億", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v / 1e8) } },
+    series: [
+      { name: "營業現金流", type: "bar", data: rows.map(r => r.op_cashflow),
+        itemStyle: { color: "rgba(63,178,111,.65)" } },
+      { name: "稅後淨利", type: "bar", data: rows.map(r => r.net_income),
+        itemStyle: { color: "rgba(79,142,247,.65)" } },
+      { name: "自由現金流", type: "line", data: rows.map(r => r.fcf), showSymbol: false,
+        lineStyle: { color: CHART_THEME.WARN, width: 1.6 } },
+    ],
+  }));
+  chartOnce("chart-working").setOption(baseOption({
+    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    xAxis: { type: "category", data: q, ...axisStyle() },
+    yAxis: [{ type: "value", name: "億", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v / 1e8) } },
+            { type: "value", name: "負債比%", position: "right", splitLine: { show: false }, max: 100, ...axisStyle() }],
+    series: [
+      { name: "存貨", type: "line", data: rows.map(r => r.inventory), showSymbol: false },
+      { name: "應收帳款", type: "line", data: rows.map(r => r.receivables), showSymbol: false },
+      { name: "負債比%", type: "line", yAxisIndex: 1, data: rows.map(r => r.debt_ratio),
+        showSymbol: false, lineStyle: { type: "dashed" } },
+    ],
+  }));
+}
+
+/* ── 估值 ── */
+async function drawValuation() {
+  const v = await api(`/api/stocks/${SID}/valuation`);
+  const hist = v.history || [];
+  if (hist.length > 5) {
+    chartOnce("chart-pe").setOption(baseOption({
+      legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+      xAxis: { type: "category", data: hist.map(r => r.date), ...axisStyle() },
+      yAxis: [{ type: "value", name: "PE", scale: true, ...axisStyle() },
+              { type: "value", name: "殖利率%", position: "right", splitLine: { show: false }, ...axisStyle() }],
+      series: [
+        { name: "本益比", type: "line", data: hist.map(r => r.pe), showSymbol: false, lineStyle: { width: 2 } },
+        { name: "殖利率%", type: "line", yAxisIndex: 1, data: hist.map(r => r.dividend_yield),
+          showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: CHART_THEME.DOWN } },
+      ],
+    }));
+  } else {
+    document.getElementById("chart-pe").innerHTML =
+      '<p class="muted">估值歷史隨每日更新累積（回填歷史不含估值），持續使用數週後這裡會有自身區間可比較。</p>';
+  }
+  const cur = v.current || {};
+  document.getElementById("val-summary").innerHTML = `
+    <table class="data">
+      <tr><th class="l">指標</th><th>目前</th><th>自身歷史百分位</th></tr>
+      <tr><td class="l">本益比 PE</td><td>${fmt.num(cur.pe, 1)}</td><td>${v.pe_percentile != null ? fmt.pct(v.pe_percentile, 0) + "（越低越便宜）" : "—"}</td></tr>
+      <tr><td class="l">股價淨值比 PB</td><td>${fmt.num(cur.pb, 2)}</td><td>${v.pb_percentile != null ? fmt.pct(v.pb_percentile, 0) : "—"}</td></tr>
+      <tr><td class="l">殖利率</td><td>${fmt.pct(cur.dividend_yield)}</td><td class="muted">近四季EPS ${fmt.num(v.eps_ttm)} 元</td></tr>
+    </table>
+    <p class="muted">框架提醒：估值要做三層比較 — ①自身五年區間 ②同業 ③成長率與景氣位置。此處僅涵蓋①，同業比較請開同業個股頁對照。</p>`;
+}
+
+/* ── 籌碼 ── */
+async function drawChips() {
+  const c = await api(`/api/stocks/${SID}/chips`);
+  const inst = c.institutional || [];
+  if (!inst.length) {
+    document.getElementById("chart-insti").innerHTML = '<p class="muted">尚無法人資料。</p>';
+    return;
+  }
+  let cum = 0;
+  const cumLine = inst.map(r => (cum += (r.total_net || 0)) / 1000);
+  chartOnce("chart-insti").setOption(baseOption({
+    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    xAxis: { type: "category", data: inst.map(r => r.date), ...axisStyle() },
+    yAxis: [{ type: "value", name: "張", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v) } },
+            { type: "value", name: "累計(張)", position: "right", splitLine: { show: false }, ...axisStyle() }],
+    series: [
+      { name: "外資", type: "bar", stack: "n", data: inst.map(r => (r.foreign_net || 0) / 1000) },
+      { name: "投信", type: "bar", stack: "n", data: inst.map(r => (r.trust_net || 0) / 1000) },
+      { name: "自營", type: "bar", stack: "n", data: inst.map(r => (r.dealer_net || 0) / 1000) },
+      { name: "累計買賣超", type: "line", yAxisIndex: 1, data: cumLine, showSymbol: false,
+        lineStyle: { color: CHART_THEME.WARN, width: 1.6 } },
+    ],
+  }));
+  document.querySelector("#panel-chips p")?.remove();
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = `近5日合計 ${fmt.zhang(c.net5)}｜近20日合計 ${fmt.zhang(c.net20)}（框架：看持續性，不看單日）`;
+  document.getElementById("panel-chips").appendChild(p);
+
+  const mg = c.margin || [];
+  if (mg.length) {
+    chartOnce("chart-margin-bal").setOption(baseOption({
+      legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+      xAxis: { type: "category", data: mg.map(r => r.date), ...axisStyle() },
+      yAxis: { type: "value", name: "張", ...axisStyle() },
+      series: [
+        { name: "融資餘額", type: "line", data: mg.map(r => r.margin_balance), showSymbol: false },
+        { name: "融券餘額", type: "line", data: mg.map(r => r.short_balance), showSymbol: false },
+      ],
+    }));
+  }
+}
+
+/* ── 系統判讀摘要 ── */
+async function loadNarrative() {
+  const s = await api(`/api/stocks/${SID}/summary`);
+  const badge = document.getElementById("tilt-badge");
+  badge.textContent = `${s.tilt}（量化 ${s.quant_score}/${s.quant_max}）`;
+  badge.className = "badge " + (s.tilt === "偏多" ? "up" : s.tilt === "偏空" ? "down" : "");
+  const rows = s.lines.map(l => `
+    <p style="margin:6px 0"><b>${l.label}</b>
+      <span class="muted">（${l.effective != null ? l.effective : "—"}/${l.max}分）</span>：
+      ${l.detail}</p>`).join("");
+  const missing = s.missing.length
+    ? `<p class="warn" style="margin:10px 0 0">尚需你自行判斷評分：${s.missing.join("、")}（這些是主觀判斷，系統無法自動生成）</p>`
+    : "";
+  document.getElementById("narrative").innerHTML = rows + missing;
+}
+
+/* ── 評分表 ── */
+async function loadScore() {
+  const card = await api(`/api/stocks/${SID}/score`);
+  const el = document.getElementById("scorecard");
+  el.innerHTML = card.items.map(it => `
+    <div class="score-row">
+      <span>${it.label}<span class="muted">/${it.max}</span></span>
+      <div class="score-bar"><div style="width:${(it.effective || 0) / it.max * 100}%"></div></div>
+      <span>${it.effective != null ? it.effective : "—"}</span>
+      <input type="number" min="0" max="${it.max}" step="0.5" data-key="${it.key}"
+             value="${it.manual != null ? it.manual : ""}"
+             placeholder="${it.manual_only ? "人工" : "自動" + (it.auto ?? "")}">
+      ${it.reasons.length ? `<div class="reasons">${it.reasons.join("；")}</div>` : ""}
+    </div>`).join("");
+  document.getElementById("score-total").textContent =
+    card.complete ? `總分 ${card.total} / 100` : `（${card.total} 分，質化項未評）`;
+  document.getElementById("score-verdict").textContent = card.verdict || "產業/競爭力/催化劑需人工評分";
+  if (card.note) document.getElementById("score-note").value = card.note;
+}
+
+document.getElementById("btn-save-score").addEventListener("click", async () => {
+  const payload = { note: document.getElementById("score-note").value };
+  document.querySelectorAll("#scorecard input").forEach(inp => {
+    payload[inp.dataset.key] = inp.value === "" ? null : parseFloat(inp.value);
+  });
+  await api(`/api/stocks/${SID}/score`, { method: "POST", body: payload });
+  toast("評分已儲存");
+  loadScore();
+});
+
+/* ── 警訊與查核 ── */
+async function loadAlerts() {
+  const a = await api(`/api/stocks/${SID}/alerts`);
+  document.getElementById("alerts").innerHTML = a.alerts.length
+    ? a.alerts.map(x => `<p class="warn" style="margin:6px 0">⚠ ${x.message}</p>`).join("")
+    : '<p class="muted" style="margin:6px 0">未偵測到量化警訊</p>';
+  document.getElementById("checklist").innerHTML = a.checklist.map(c =>
+    `<p style="margin:6px 0"><a href="${c.url}" target="_blank">↗</a> ${c.item}</p>`).join("");
+}
+
+loadHead().then(() => { loadTab("kline"); loadNarrative(); loadScore(); loadAlerts(); })
+  .catch(err => { document.getElementById("title").textContent = err.message; });
+</script>
+</body>
+</html>

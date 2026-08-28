@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>儀表板 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/echarts.min.js"></script>
+</head>
+<body>
+<main>
+  <h1>市場儀表板</h1>
+
+  <div class="card mt" id="stale-banner" style="display:none;border-color:var(--warn)">
+    <div class="flex">
+      <span class="warn">⚠ <span id="stale-text"></span></span>
+      <span class="spacer"></span>
+      <button id="btn-stale-update">立即更新今日行情</button>
+    </div>
+  </div>
+
+  <div class="grid cols-4" id="stat-cards">
+    <div class="card"><div class="k">加權指數</div><div class="v" id="taiex">—</div><div id="taiex-chg" class="muted">—</div></div>
+    <div class="card"><div class="k">成交金額</div><div class="v" id="amount">—</div><div class="muted" id="latest-date">—</div></div>
+    <div class="card"><div class="k">三大法人（金額）</div><div class="v" id="insti-amt">—</div><div class="muted" id="insti-detail">—</div></div>
+    <div class="card"><div class="k">市場寬度（漲/跌）</div><div class="v" id="breadth">—</div><div class="muted" id="breadth-total">—</div></div>
+  </div>
+
+  <div class="grid cols-2 mt">
+    <div class="card">
+      <h2>加權指數走勢（近 60 個交易日）</h2>
+      <div id="taiex-chart" class="chart"></div>
+    </div>
+    <div class="card">
+      <h2>觀察名單速覽</h2>
+      <div class="scroll-x">
+        <table class="data" id="watch-table">
+          <thead><tr><th class="l">股票</th><th>收盤</th><th>漲跌</th><th>本益比</th><th>警訊</th><th>分級</th></tr></thead>
+          <tbody><tr><td colspan="6" class="muted l">載入中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt">
+    <h2>資料維護</h2>
+    <div class="flex">
+      <button id="btn-sync" class="ghost">同步股票清單</button>
+      <button id="btn-daily" class="ghost">更新今日行情</button>
+      <button id="btn-backfill" class="ghost">回填 180 天歷史</button>
+      <button id="btn-revenue" class="ghost">抓全市場月營收(13個月)</button>
+      <span class="spacer"></span>
+      <span class="muted" id="db-status">—</span>
+    </div>
+    <p class="muted" style="margin-bottom:0">
+      首次使用順序：①同步股票清單 → ②更新今日行情 → ③回填歷史（背景執行約 10 分鐘，供均線/法人連買篩選）→ ④抓月營收（供營收類篩選）。
+      平日 15:05 會嘗試自動更新，但若電腦當時處於睡眠狀態排程會被跳過——
+      不需要記時間，資料過期時上方會自動跳出提示，點一下就好。
+    </p>
+  </div>
+</main>
+
+<script src="js/common.js"></script>
+<script>
+/* 判斷資料是否過期：以台灣時間推算「應該已收盤的最近一個交易日」
+   （平日15:00前算前一天，平日15:00後算當天，跳過六日），
+   若最新資料早於這個日期，代表排程被錯過（例如電腦睡眠），需要手動更新。 */
+function expectedTradingDate() {
+  const now = new Date();
+  const d = new Date(now);
+  if (now.getHours() < 15) d.setDate(d.getDate() - 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  // 用瀏覽器本地時區的年月日組字串（不可用 toISOString，那是 UTC 會差一天）
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function checkStale(latestDate) {
+  const banner = document.getElementById("stale-banner");
+  const expected = expectedTradingDate();
+  if (!latestDate || latestDate < expected) {
+    document.getElementById("stale-text").textContent =
+      `資料可能過期：目前最新為 ${latestDate || "無"}，預期應有 ${expected} 的收盤資料。` +
+      `若 ${expected} 是國定假日則忽略此提示；否則可能是電腦睡眠導致自動更新被跳過，點右邊按鈕手動補更新。`;
+    banner.style.display = "";
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+document.getElementById("btn-stale-update").addEventListener("click", async e => {
+  e.target.disabled = true; e.target.textContent = "更新中…";
+  try {
+    await api("/api/admin/update-daily", { method: "POST", body: {} });
+    toast("已更新今日行情");
+    loadDashboard(); loadStatus();
+  } catch (err) { toast("失敗：" + err.message); }
+  e.target.disabled = false; e.target.textContent = "立即更新今日行情";
+});
+
+async function loadDashboard() {
+  const d = await api("/api/market/dashboard");
+  const L = d.latest;
+  checkStale(L ? L.date : null);
+  if (L) {
+    document.getElementById("taiex").textContent = fmt.num(L.taiex_close, 2);
+    const chg = document.getElementById("taiex-chg");
+    chg.textContent = `${fmt.sign(L.taiex_change)} (${fmt.signPct(L.taiex_change_pct)})`;
+    chg.className = fmt.cls(L.taiex_change);
+    document.getElementById("amount").textContent = L.total_amount ? fmt.yi(L.total_amount) : "—";
+    document.getElementById("latest-date").textContent = L.date;
+    const f = L.foreign_net_amt, t = L.trust_net_amt, dl = L.dealer_net_amt;
+    if (f != null || t != null) {
+      const total = (f || 0) + (t || 0) + (dl || 0);
+      const el = document.getElementById("insti-amt");
+      el.textContent = fmt.yi(total);
+      el.className = "v " + fmt.cls(total);
+      document.getElementById("insti-detail").textContent =
+        `外資 ${fmt.yi(f)}｜投信 ${fmt.yi(t)}｜自營 ${fmt.yi(dl)}`;
+    }
+  }
+  if (d.breadth && d.breadth.total) {
+    document.getElementById("breadth").innerHTML =
+      `<span class="up">${d.breadth.up}</span> / <span class="down">${d.breadth.down}</span>`;
+    document.getElementById("breadth-total").textContent = `共 ${d.breadth.total} 檔有報價`;
+  }
+  if (d.history && d.history.length > 1) {
+    const chart = makeChart("taiex-chart");
+    chart.setOption(baseOption({
+      xAxis: { type: "category", data: d.history.map(r => r.date), ...axisStyle() },
+      yAxis: { type: "value", scale: true, ...axisStyle() },
+      series: [{ type: "line", data: d.history.map(r => r.taiex_close),
+                 showSymbol: false, lineStyle: { color: CHART_THEME.ACCENT, width: 2 },
+                 areaStyle: { color: "rgba(79,142,247,.12)" } }],
+    }));
+  } else {
+    document.getElementById("taiex-chart").innerHTML =
+      '<p class="muted">尚無歷史資料 — 請先執行下方「回填 180 天歷史」。</p>';
+  }
+}
+
+async function loadWatchlist() {
+  const rows = await api("/api/watchlist");
+  const tierLabel = { research: "研究中", waiting: "等買點", holding: "持有中" };
+  const tbody = document.querySelector("#watch-table tbody");
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="muted l">觀察名單是空的 — 用右上角搜尋加入個股。</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="l"><a href="stock.html?id=${r.stock_id}">${r.stock_id} ${r.name}</a></td>
+      <td>${fmt.num(r.close)}</td>
+      <td class="${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
+      <td>${fmt.num(r.pe, 1)}</td>
+      <td>${r.alerts.length ? `<span class="badge warn">${r.alerts.length} 項</span>` : '<span class="muted">—</span>'}</td>
+      <td><span class="badge tier">${tierLabel[r.tier] || r.tier}</span></td>
+    </tr>`).join("");
+}
+
+async function loadStatus() {
+  const s = await api("/api/admin/status");
+  document.getElementById("db-status").textContent =
+    `股票 ${s.stocks} 檔｜行情 ${s.quote_days} 天（至 ${s.latest_date || "—"}）｜月營收 ${s.revenue_months} 個月｜深度資料 ${s.deep_stocks} 檔`;
+}
+
+function bindAdmin(id, path, body, confirmMsg) {
+  document.getElementById(id).addEventListener("click", async e => {
+    const btn = e.target;
+    btn.disabled = true;
+    try {
+      const r = await api(path, { method: "POST", body: body || {} });
+      toast(r.note || "完成：" + JSON.stringify(r).slice(0, 120));
+      loadStatus(); loadDashboard();
+    } catch (err) { toast("失敗：" + err.message); }
+    btn.disabled = false;
+  });
+}
+bindAdmin("btn-sync", "/api/admin/sync-stocks");
+bindAdmin("btn-daily", "/api/admin/update-daily");
+bindAdmin("btn-backfill", "/api/admin/backfill", { days: 180 });
+bindAdmin("btn-revenue", "/api/admin/fetch-revenue", { months: 13 });
+
+loadDashboard(); loadWatchlist(); loadStatus();
+</script>
+</body>
+</html>
