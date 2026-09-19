@@ -82,3 +82,15 @@ DB_URL 走環境變數（`STOCKS_DB_URL`），預留換 Postgres 上雲；資料
 CSS 全部在 `web/css/app.css`：先是共用 design system（CSS 變數、`.card`/`.grid cols-N`/`table.data`/`.badge`），檔尾才是 `.fin-*` 前綴的財務規劃頁專用規則。注意 grid 子項的 `min-width: auto` 會被寬表格/圖表撐開導致整頁橫向溢出，財務規劃頁已用 `.fin-layout > *, .fin-result .grid > * { min-width: 0 }` 處理。
 
 新增後端功能時，路由層應保持薄 — 邏輯放 service 層，routes.py 只做參數解析與呼叫。
+
+## Git Attribution Rules
+
+- Always use the repository owner's existing Git identity.
+- Never modify `git user.name` or `git user.email`.
+- Do not add Claude, Cursor, Anthropic, OpenAI, Codex, ChatGPT, Genspark, or any AI assistant as a Git author, committer, or co-author.
+- Never add AI-generated `Co-Authored-By` trailers.
+- Preserve legitimate human contributors and human co-authors.
+- AI agents may assist with git add, commit, and push, but attribution must remain with the actual human repository author.
+- Before committing, verify `git config user.name` and `git config user.email`.
+- Expected owner identity for this repository:
+  Sam <shaojun5861@gmail.com>
