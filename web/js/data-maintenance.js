@@ -28,7 +28,7 @@
   async function act(fn) {
     if (busy) return;
     busy = true;
-    try { await fn(); } catch (err) { toast(err.message); }
+    try { await fn(); } catch (err) { toastError(err.message); }
     finally { busy = false; }
   }
   el('history-create').onclick = () => act(async () => {

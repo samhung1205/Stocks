@@ -40,7 +40,7 @@
       grid: { left: 62, right: 22, top: 42, bottom: 42 },
       xAxis: { type: "category", boundaryGap: false, data: rows.map(r => r.date), ...axisStyle() },
       yAxis: { type: "value", scale: true, ...axisStyle(), ...yAxis },
-      dataZoom: [{ type: "inside", start: 0, end: 100 },
+      dataZoom: [{ type: "inside", start: 0, end: 100, zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false },
                  { type: "slider", height: 14, bottom: 5, borderColor: CHART_THEME.BORDER,
                    fillerColor: "rgba(49,95,104,.14)", textStyle: { color: CHART_THEME.MUTED } }],
     });
@@ -64,9 +64,9 @@
         .join("<br>");
     };
     option.series = [
-      line("策略 Net", net, CHART_THEME.ACCENT),
-      line("策略 Gross", gross, CHART_THEME.MUTED, { lineStyle: { type: "dashed", width: 1.5 } }),
-      line("Benchmark", benchmark, CHART_THEME.WARN),
+      line("策略淨值（扣成本）", net, CHART_THEME.ACCENT),
+      line("策略淨值（未扣成本）", gross, CHART_THEME.MUTED, { lineStyle: { type: "dashed", width: 1.5 } }),
+      line("比較基準", benchmark, CHART_THEME.WARN),
     ];
     chart(id).setOption(option);
   }
@@ -89,7 +89,7 @@
       line("策略", drawdowns(rows, "net_equity"), CHART_THEME.ACCENT, {
         areaStyle: { color: "rgba(49,95,104,.10)" },
       }),
-      line("Benchmark", drawdowns(rows, "benchmark"), CHART_THEME.WARN, {
+      line("比較基準", drawdowns(rows, "benchmark"), CHART_THEME.WARN, {
         lineStyle: { type: "dashed", width: 1.5 },
       }),
     ];
@@ -110,7 +110,7 @@
       animation: false,
       aria: {
         enabled: true,
-        description: `${pathLabel(surface.x?.path)} 與 ${pathLabel(surface.y?.path || "全部")} 的參數表面熱圖，每格直接顯示 objective 數值。`,
+        description: `${pathLabel(surface.x?.path)} 與 ${pathLabel(surface.y?.path || "全部")} 的參數曲面熱圖，每格直接顯示目標值。`,
         decal: { show: true },
       },
       grid: { left: 86, right: 28, top: 24, bottom: 70 },
@@ -119,8 +119,8 @@
           const cell = item.data.detail;
           return `<b>${pathLabel(surface.x.path)}: ${cell.x}</b><br>`
             + `${pathLabel(surface.y?.path || "全部")}: ${cell.y ?? "全部"}<br>`
-            + `${surface.objective?.name || "objective"}: ${Number(cell.value).toFixed(4)}<br>`
-            + `n: ${cell.n} · min: ${Number(cell.min).toFixed(4)} · max: ${Number(cell.max).toFixed(4)}`;
+            + `目標值（${surface.objective?.name || "objective"}）: ${Number(cell.value).toFixed(4)}<br>`
+            + `樣本數 ${cell.n} · 最小 ${Number(cell.min).toFixed(4)} · 最大 ${Number(cell.max).toFixed(4)}`;
         },
       },
       xAxis: { type: "category", name: pathLabel(surface.x?.path), data: xValues.map(String), ...axisStyle() },
@@ -148,7 +148,7 @@
       animation: false,
       aria: {
         enabled: true,
-        description: "各 Walk Forward fold 各自從現金開始、標準化為一百的獨立 OOS 淨值。橫軸是該 fold 內的交易日序號，不代表一條連續投資曲線。",
+        description: "樣本外驗證的各個 fold 各自從現金開始、標準化為一百的獨立 OOS 淨值。橫軸是該 fold 內的交易日序號，不代表一條連續投資曲線。",
         decal: { show: true },
       },
       legend: { top: 0, textStyle: { color: CHART_THEME.MUTED } },
@@ -175,8 +175,8 @@
       name: "起始值 = 100", nameTextStyle: { color: CHART_THEME.MUTED },
       axisLabel: { color: CHART_THEME.MUTED, formatter: v => Number(v).toFixed(0) },
     });
-    option.aria.description = "次要證據：承接前一個 OOS 終端部位的 stitched OOS 連續淨值；不屬於 independent-fold evidence。";
-    option.series = [line("Stitched OOS", normalized(rows, "net_equity"), CHART_THEME.WARN)];
+    option.aria.description = "次要證據：承接前一個 OOS 終端部位的縫合（stitched）OOS 連續淨值；不屬於獨立 fold 證據。";
+    option.series = [line("縫合 OOS（次要證據）", normalized(rows, "net_equity"), CHART_THEME.WARN)];
     chart(id).setOption(option);
   }
 
@@ -190,9 +190,9 @@
     const series = kind === "equity" ? normalized(rows, "total_equity") :
       kind === "drawdown" ? drawdowns(rows, "total_equity") :
       rows.map(r => r.cash_weight == null ? null : Number(r.cash_weight) * 100);
-    option.aria.description = kind === "equity" ? "Portfolio 歷史淨值，首日標準化為一百。" :
-      kind === "drawdown" ? "Portfolio 相對歷史高點的逐日回撤百分比。" :
-      "Portfolio 逐日現金權重；包含策略現金、無候選現金與執行後殘餘現金。";
+    option.aria.description = kind === "equity" ? "投資組合歷史淨值，首日標準化為一百。" :
+      kind === "drawdown" ? "投資組合相對歷史高點的逐日回撤百分比。" :
+      "投資組合逐日現金權重；包含策略現金、無候選現金與執行後殘餘現金。";
     option.tooltip.formatter = points => points?.length ?
       `<b>${points[0].axisValue}</b><br>${points[0].marker}${Number(points[0].value).toFixed(2)}${kind === "equity" ? "" : "%"}` : "";
     option.series = [line(kind === "equity" ? "淨值（起始 = 100）" :

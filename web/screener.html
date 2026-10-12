@@ -41,6 +41,7 @@
     </fieldset>
     <div class="screen-actions">
       <button id="btn-run" type="button">執行篩選</button>
+      <button id="btn-clear" type="button" class="ghost">清除條件</button>
       <p class="muted">營收條件需先抓取全市場月營收；均線與法人連買需先回填歷史。命中前 10 名會自動預抓深度資料。</p>
     </div>
   </section>
@@ -113,6 +114,31 @@ function collectParams() {
 let currentHits = [];
 let sortState = { key: "amount", dir: -1 };
 
+/* 條件與排序寫進網址：從個股頁返回、重新整理或存成書籤時，候選清單都還在。 */
+function writeState() {
+  const q = new URLSearchParams();
+  FIELDS.forEach(f => { const v = document.getElementById("p-" + f).value; if (v !== "") q.set(f, v); });
+  CHECKS.forEach(c => {
+    const on = document.getElementById("p-" + c).checked;
+    if (on) q.set(c, "1"); else if (c === "exclude_etf") q.set(c, "0");
+  });
+  q.set("sort", sortState.key); q.set("dir", sortState.dir);
+  const url = `screener.html?${q}`;
+  history.replaceState(null, "", url);
+  try { sessionStorage.setItem("screener:last", url); } catch {}
+}
+
+function readState() {
+  const q = new URLSearchParams(location.search);
+  if (![...FIELDS, ...CHECKS].some(k => q.has(k))) return false;
+  clearForm();
+  FIELDS.forEach(f => { if (q.has(f)) document.getElementById("p-" + f).value = q.get(f); });
+  CHECKS.forEach(c => { if (q.has(c)) document.getElementById("p-" + c).checked = q.get(c) === "1"; });
+  if (document.querySelector(`#results th.sortable[data-key="${CSS.escape(q.get("sort") || "")}"]`))
+    sortState = { key: q.get("sort"), dir: q.get("dir") === "1" ? 1 : -1 };
+  return true;
+}
+
 function renderResults() {
   const { key, dir } = sortState;
   currentHits.sort((a, b) => {
@@ -123,7 +149,7 @@ function renderResults() {
     return (va - vb) * dir;
   });
   document.getElementById("result-title").textContent = `篩選結果（${currentHits.length} 檔）`;
-  document.getElementById("result-context").textContent = currentHits.length ? "依成交額由高至低排列，可切換欄位排序。" : "目前條件沒有候選；可檢查資料涵蓋或放寬條件。";
+  document.getElementById("result-context").textContent = currentHits.length ? "點欄位標題可切換排序；條件與排序已記在網址，從個股頁返回時會還原。" : "目前條件沒有候選；可檢查資料涵蓋或放寬條件。";
   const tbody = document.querySelector("#results tbody");
   tbody.innerHTML = currentHits.length ? currentHits.map(r => `
     <tr>
@@ -148,14 +174,15 @@ function renderResults() {
   });
 }
 
-async function runScreen() {
+async function runScreen(keepSort = false) {
   const btn = document.getElementById("btn-run");
   btn.disabled = true; btn.textContent = "篩選中…";
   document.getElementById("result-context").textContent = "正在依條件讀取市場資料…";
   try {
     currentHits = await api("/api/screener/run", { method: "POST", body: { params: collectParams() } });
-    sortState = { key: "amount", dir: -1 };
+    if (!keepSort) sortState = { key: "amount", dir: -1 };
     renderResults();
+    writeState();
   } catch (err) {
     document.getElementById("result-title").textContent = "篩選結果";
     document.getElementById("result-context").textContent = "資料讀取失敗";
@@ -170,17 +197,32 @@ document.querySelector("#results thead").addEventListener("click", e => {
   const key = th.dataset.key;
   sortState = sortState.key === key ? { key, dir: sortState.dir * -1 } : { key, dir: -1 };
   renderResults();
+  if (currentHits.length) writeState();
 });
 
 async function addWatch(sid, btn) {
   try {
     await api(`/api/watchlist/${sid}`, { method: "POST", body: { tier: "research" } });
     btn.textContent = "已加入研究中"; btn.disabled = true;
-  } catch (err) { toast("加入觀察名單失敗：" + err.message); }
+  } catch (err) { toastError("加入觀察名單失敗：" + err.message); }
 }
 
-document.getElementById("btn-run").addEventListener("click", runScreen);
+document.getElementById("btn-run").addEventListener("click", () => runScreen());
+document.getElementById("btn-clear").addEventListener("click", () => {
+  clearForm();
+  currentHits = []; sortState = { key: "amount", dir: -1 };
+  history.replaceState(null, "", "screener.html");
+  try { sessionStorage.removeItem("screener:last"); } catch {}
+  document.getElementById("result-title").textContent = "篩選結果";
+  document.getElementById("result-context").textContent = "尚未執行篩選";
+  document.querySelector("#results tbody").innerHTML =
+    '<tr class="table-state"><td colspan="11">選擇條件或套用快速篩選後執行。</td></tr>';
+  document.querySelectorAll("#results th.sortable").forEach(th => {
+    th.classList.remove("active"); th.querySelector(".arrow").textContent = ""; th.setAttribute("aria-sort", "none");
+  });
+});
 loadPresets();
+if (readState()) runScreen(true);
 </script>
 </body>
 </html>

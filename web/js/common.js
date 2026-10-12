@@ -8,6 +8,8 @@ const NAV_GROUPS = [
   ["個人決策", [["journal.html", "交易日誌"], ["finance.html", "財務規劃"]]],
 ];
 
+const NAV_CARET = `<svg class="nav-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
 function renderNav() {
   const here = location.pathname.split("/").pop() || "index.html";
   const stage = here === "strategy.html" ? (qs("optimization") ? "參數穩健性" : qs("walkforward") ? "樣本外驗證" : "策略實驗室") : "";
@@ -20,9 +22,9 @@ function renderNav() {
   nav.innerHTML = `
     <a class="brand" href="index.html">台股分析<span>研究卷宗</span></a>
     <span class="nav-current" aria-current="page">${groupName}<span aria-hidden="true"> / </span><strong>${current}</strong></span>
-    <div class="nav-groups">${NAV_GROUPS.map(([name, links]) =>
-      `<details class="nav-group"><summary>${name}</summary><div class="nav-items">${links.map(([href, label]) =>
-        `<a class="navlink ${current === label ? "active" : ""}" ${current === label ? 'aria-current="page"' : ""} href="${href}">${label}</a>`).join("")}${name === "市場研究" && here === "stock.html" ? `<span class="navlink active" aria-current="page">個股研究</span>` : ""}</div></details>`).join("")}</div>
+    <div class="nav-groups">${NAV_GROUPS.map(([name, links], i) =>
+      `<div class="nav-group"><button type="button" class="nav-trigger" aria-expanded="false" aria-controls="nav-menu-${i}">${name}${NAV_CARET}</button><div class="nav-items" id="nav-menu-${i}" hidden>${links.map(([href, label]) =>
+        `<a class="navlink ${current === label ? "active" : ""}" ${current === label ? 'aria-current="page"' : ""} href="${href}">${label}</a>`).join("")}${name === "市場研究" && here === "stock.html" ? `<span class="navlink active" aria-current="page">個股研究</span>` : ""}</div></div>`).join("")}</div>
     <div class="searchbox">
       <label class="sr-only" for="global-search">搜尋股票代號或名稱</label><input id="global-search" placeholder="搜尋股票，如 2330" autocomplete="off" aria-controls="search-results">
       <div class="search-results" id="search-results" role="listbox"></div>
@@ -56,12 +58,57 @@ function renderNav() {
     if (e.key === "Enter" && /^\d{4,6}$/.test(input.value.trim()))
       location.href = `stock.html?id=${input.value.trim()}`;
   });
+  /* 導覽選單：點擊或滑鼠停留開啟；滑鼠移開、點擊外部、Esc、焦點離開皆關閉。 */
+  const groups = [...nav.querySelectorAll(".nav-group")];
   const mobile = matchMedia("(max-width: 760px)");
-  const syncGroups = () => { nav.querySelectorAll(".nav-group").forEach(d => { d.open = false; }); };
-  mobile.addEventListener("change", syncGroups); syncGroups();
-  nav.querySelectorAll(".nav-group").forEach(group => group.addEventListener("toggle", () => {
-    if (group.open) nav.querySelectorAll(".nav-group").forEach(other => { if (other !== group) other.open = false; });
-  }));
+  let openGroup = null, openedByHover = false, hoverTimer;
+  const setOpen = (group, byHover = false) => {
+    clearTimeout(hoverTimer);
+    groups.forEach(g => {
+      g.querySelector(".nav-trigger").setAttribute("aria-expanded", String(g === group));
+      g.querySelector(".nav-items").hidden = g !== group;
+    });
+    openGroup = group; openedByHover = !!group && byHover;
+  };
+  groups.forEach(group => {
+    const trigger = group.querySelector(".nav-trigger");
+    trigger.addEventListener("click", () => {
+      // 滑鼠停留已先開啟時，點擊是「留著」而不是「關閉」
+      if (openGroup === group && !openedByHover) setOpen(null); else setOpen(group);
+    });
+    group.addEventListener("pointerenter", e => {
+      if (e.pointerType !== "mouse" || mobile.matches) return;
+      clearTimeout(hoverTimer);
+      if (openGroup !== group) hoverTimer = setTimeout(() => setOpen(group, true), openGroup ? 0 : 90);
+    });
+    group.addEventListener("pointerleave", e => {
+      if (e.pointerType !== "mouse" || mobile.matches) return;
+      clearTimeout(hoverTimer);
+      if (openGroup === group) hoverTimer = setTimeout(() => setOpen(null), 220);
+    });
+    group.addEventListener("focusout", e => {
+      if (openGroup === group && e.relatedTarget && !group.contains(e.relatedTarget)) setOpen(null);
+    });
+    group.addEventListener("keydown", e => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      if (openGroup !== group) setOpen(group);
+      const items = [...group.querySelectorAll("a.navlink")];
+      const at = items.indexOf(document.activeElement), step = e.key === "ArrowDown" ? 1 : -1;
+      items[at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length]?.focus();
+    });
+  });
+  document.addEventListener("pointerdown", e => {
+    if (openGroup && !openGroup.contains(e.target)) setOpen(null);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape" || !openGroup) return;
+    const trigger = openGroup.querySelector(".nav-trigger");
+    const hadFocus = openGroup.contains(document.activeElement);
+    setOpen(null);
+    if (hadFocus) trigger.focus();
+  });
+  mobile.addEventListener("change", () => setOpen(null));
 }
 
 async function api(path, opts = {}) {
@@ -78,20 +125,53 @@ async function api(path, opts = {}) {
   return resp.json();
 }
 
+const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function toastStack() {
+  let stack = document.querySelector(".toast-stack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.className = "toast-stack";
+    document.body.appendChild(stack);
+  }
+  return stack;
+}
+
 function toast(msg, ms = 2600) {
   const el = document.createElement("div");
   el.className = "toast";
+  el.setAttribute("role", "status");
   el.textContent = msg;
-  document.body.appendChild(el);
+  toastStack().appendChild(el);
   setTimeout(() => el.remove(), ms);
 }
 
+/* 失敗訊息不自動消失：使用者要有時間讀原因，再自己關掉。 */
+function toastError(msg) {
+  const stack = toastStack();
+  const text = String(msg);
+  if ([...stack.querySelectorAll(".toast.error span")].some(el => el.textContent === text)) return;
+  const errors = stack.querySelectorAll(".toast.error");
+  if (errors.length >= 3) errors[0].remove();
+  const el = document.createElement("div");
+  el.className = "toast error";
+  el.setAttribute("role", "alert");
+  el.innerHTML = `<strong>未完成</strong><span></span><button type="button" class="ghost small">關閉</button>`;
+  el.querySelector("span").textContent = text;
+  el.querySelector("button").addEventListener("click", () => el.remove());
+  stack.appendChild(el);
+}
+
+/* 最後防線：沒有自行處理錯誤的非同步操作，失敗時仍要讓使用者看得到。 */
+window.addEventListener("unhandledrejection", e => {
+  toastError(e.reason?.message || String(e.reason || "操作失敗，請稍後重試"));
+});
+
 /* Shared result identity strip: provenance stays visible before any metric. */
 function researchMetadata(items) {
-  const escape = value => String(value ?? "—").replace(/[&<>"']/g, c =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   return `<dl class="research-metadata">${items.map(([name, value]) =>
-    `<div><dt>${escape(name)}</dt><dd>${escape(value)}</dd></div>`).join("")}</dl>`;
+    `<div><dt>${escapeHtml(name ?? "—")}</dt><dd>${escapeHtml(value ?? "—")}</dd></div>`).join("")}</dl>`;
 }
 
 /* 格式化 */

@@ -143,7 +143,7 @@ document.getElementById("btn-save-plan").addEventListener("click", async () => {
     }
     toast("交易計畫已建立 #" + r.id);
     loadPlans();
-  } catch (err) { toast("失敗：" + err.message); }
+  } catch (err) { toastError("交易計畫未建立：" + err.message); }
 });
 
 /* 記錄成交 */
@@ -160,7 +160,7 @@ document.getElementById("btn-add-trade").addEventListener("click", async () => {
     await api("/api/journal/trades", { method: "POST", body: payload });
     toast("已記錄成交");
     loadTrades(); loadPositions(); loadPerf();
-  } catch (err) { toast("失敗：" + err.message); }
+  } catch (err) { toastError("成交未記錄：" + err.message); }
 });
 
 /* 載入區塊 */
@@ -211,7 +211,10 @@ async function loadPlans() {
 }
 
 async function closePlan(id) {
-  await api(`/api/journal/plans/${id}/status`, { method: "POST", body: { status: "closed" } });
+  try {
+    await api(`/api/journal/plans/${id}/status`, { method: "POST", body: { status: "closed" } });
+    toast(`計畫 #${id} 已結案`);
+  } catch (err) { toastError(`計畫 #${id} 未結案：${err.message}`); }
   loadPlans();
 }
 
@@ -241,7 +244,7 @@ async function loadDraft(sid) {
     if (d.stop_price != null) document.getElementById("pl-stop_price").value = d.stop_price;
     calcPosition();
     toast("已帶入系統草稿，記得填 1-4 句與確認金額");
-  } catch (err) { toast("草擬失敗：" + err.message); }
+  } catch (err) { toastError("草擬失敗：" + err.message); }
   btn.disabled = false; btn.textContent = "帶入系統草稿";
 }
 document.getElementById("btn-draft").addEventListener("click", () =>

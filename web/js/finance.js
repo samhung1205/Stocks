@@ -757,7 +757,7 @@ function recalc() {
       R = await api("/api/finance/simulate", { method: "POST", body: P });
       updateResult(R);
       syncWeightInputs();
-    } catch (err) { toast("試算失敗：" + err.message); }
+    } catch (err) { toastError("試算失敗：" + err.message); }
   }, 250);
 }
 
@@ -856,7 +856,7 @@ $("btn-save").addEventListener("click", async () => {
     await loadProfileList(P.id);
     $("save-hint").textContent = "已儲存 " + new Date().toLocaleTimeString("zh-TW");
     toast("已儲存情境「" + P.name + "」");
-  } catch (err) { toast("儲存失敗：" + err.message); }
+  } catch (err) { toastError("儲存失敗：" + err.message); }
 });
 
 $("btn-del").addEventListener("click", async () => {
@@ -873,7 +873,7 @@ $("btn-refresh-etf").addEventListener("click", async e => {
   try {
     const r = await api("/api/finance/refresh-etf", { method: "POST", body: {} });
     toast(r.note);
-  } catch (err) { toast("失敗：" + err.message); }
+  } catch (err) { toastError("ETF 歷史資料未補齊：" + err.message); }
   setTimeout(() => { e.target.disabled = false; }, 3000);
 });
 

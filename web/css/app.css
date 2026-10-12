@@ -868,13 +868,17 @@ nav.topbar .brand span { font-size: .7rem; color: var(--text-secondary); font-we
 .nav-current { display: grid; flex: 0 0 auto; color: var(--text-secondary); font-size: .78rem; line-height: 1.2; border-left: 1px solid var(--rule); padding-left: 16px; }
 .nav-current strong { color: var(--text-primary); font-size: .91rem; margin-top: 3px; }
 .nav-current > span { display: none; }
-.nav-groups { display: flex; gap: 14px; align-items: center; min-width: 0; }
-.nav-group { position: relative; }
-.nav-group summary { list-style: none; white-space: nowrap; padding: 7px 4px; cursor: pointer; color: var(--text-secondary); font-weight: 600; font-size: .85rem; }
-.nav-group summary::-webkit-details-marker { display: none; }
-.nav-group summary::after { content: '⌄'; margin-left: 5px; }
-.nav-group:has(.active) summary { color: var(--action); }
-.nav-items { position: absolute; top: 100%; left: 0; min-width: 200px; display: grid; padding: 6px; background: var(--paper); border: 1px solid var(--rule); box-shadow: 0 10px 24px #24303922; z-index: 60; }
+.nav-groups { display: flex; gap: 6px; align-self: stretch; min-width: 0; }
+.nav-group { position: relative; display: flex; align-items: center; }
+nav.topbar .nav-trigger { background: none; border: 0; min-height: 36px; padding: 7px 8px; gap: 7px; white-space: nowrap; color: var(--text-secondary); font-weight: 600; font-size: .85rem; border-radius: var(--r-sm); }
+nav.topbar .nav-trigger:hover, nav.topbar .nav-trigger[aria-expanded="true"] { background: var(--inset); color: var(--text-primary); }
+nav.topbar .nav-group:has(.active) .nav-trigger { color: var(--action); }
+.nav-caret { flex: 0 0 auto; transition: transform .16s cubic-bezier(.2,.8,.2,1); }
+.nav-trigger[aria-expanded="true"] .nav-caret { transform: rotate(180deg); }
+/* 面板貼齊導覽列下緣（10px 為列的下內距、1px 為底線）；::before 補上中間空隙，滑鼠移過去不會掉出選單。 */
+.nav-items { position: absolute; top: calc(100% + 11px); left: 0; min-width: 200px; display: grid; padding: 6px; background: var(--paper); border: 1px solid var(--rule); border-radius: var(--r-sm); box-shadow: 0 10px 24px #24303922; z-index: 60; animation: nav-pop .14s cubic-bezier(.2,.8,.2,1); }
+.nav-items::before { content: ""; position: absolute; left: 0; right: 0; top: -12px; height: 12px; }
+@keyframes nav-pop { from { opacity: 0; transform: translateY(-4px); } }
 nav.topbar a.navlink, nav.topbar .navlink { padding: 7px 10px; border-radius: var(--r-sm); white-space: nowrap; color: var(--text-primary); font-size: .88rem; }
 nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inset); color: var(--action); font-weight: 700; }
 .searchbox { min-width: 150px; }
@@ -883,12 +887,13 @@ nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inse
 @media (max-width: 760px) {
   nav.topbar { padding: 10px 16px; gap: 10px; }
   .nav-current { margin-left: auto; }
-  .nav-groups { order: 3; width: 100%; justify-content: space-between; gap: 4px; }
-  .nav-group summary { padding: 8px 4px; }
-  .nav-items { min-width: 190px; }
-  .nav-group[open] .nav-items { position: static; box-shadow: none; min-width: 0; width: 100%; }
-  .nav-group[open] { flex: 1; }
-  .nav-group:last-child .nav-items { right: 0; left: auto; }
+  nav.topbar { position: static; }
+  .nav-groups { order: 3; width: 100%; position: relative; align-self: auto; gap: 4px; }
+  .nav-group { position: static; }
+  nav.topbar .nav-trigger { min-height: 44px; padding: 8px 10px; }
+  .nav-items { left: 0; right: 0; top: calc(100% + 4px); min-width: 0; }
+  .nav-items::before { display: none; }
+  nav.topbar .nav-items .navlink { padding: 11px 12px; }
   .searchbox { order: 4; width: 100%; margin: 0; }
   .searchbox input { width: 100%; }
   main { padding: 24px 16px 56px; }
@@ -1013,7 +1018,6 @@ nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inse
 #stale-banner .spacer { display: none; }
 #stale-banner .warn { color: var(--status-caution); font-size: .9rem; }
 @media (max-width: 600px) { #stale-banner .flex { grid-template-columns: 1fr; } #stale-banner button { justify-self: start; } }
-@media (max-width: 760px) { .nav-groups { flex-wrap: wrap; justify-content: flex-start; column-gap: 16px; } }
 .fin-evidence li, .fin-evidence p, .fin-assumption p { overflow-wrap: anywhere; }
 .field-label { display: block; color: var(--text-primary); font-size: .88rem; font-weight: 550; margin: 10px 0 4px; }
 nav.topbar .searchbox input:focus-visible, .search-results a:focus-visible, button:focus-visible, .btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -1106,3 +1110,34 @@ nav.topbar .searchbox input:focus-visible, .search-results a:focus-visible, butt
   .screen-filter .cols-4 { gap: 8px; }
   .screen-checks { display: grid; grid-template-columns: 1fr; }
 }
+
+/* 訊息堆疊：成功訊息短暫出現；失敗訊息留到使用者關閉。 */
+.toast-stack { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; display: grid; gap: 8px; justify-items: center; width: max-content; max-width: min(560px, calc(100vw - 32px)); }
+.toast-stack .toast { position: static; transform: none; }
+.toast.error { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 12px; align-items: center; background: var(--paper); color: var(--text-primary); border: 1px solid var(--status-critical); border-top-width: 2px; border-radius: var(--r-sm); padding: 10px 12px 10px 16px; text-align: left; }
+.toast.error strong { color: var(--status-critical); font-size: .85rem; white-space: nowrap; }
+.toast.error span { overflow-wrap: anywhere; line-height: 1.5; }
+.inline-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0; color: var(--status-critical); }
+
+/* 個股頁結論列：圖表之前先回答「系統怎麼看、我評了沒、風險在哪」，點擊跳到對應區塊。 */
+.stock-verdict { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); background: var(--paper); border: 1px solid var(--rule); border-top: 2px solid var(--evidence-primary); margin-top: 20px; }
+.stock-verdict a { display: grid; gap: 3px; padding: 13px 16px; border-right: 1px solid var(--rule); color: var(--text-primary); min-width: 0; }
+.stock-verdict a:last-child { border-right: 0; }
+.stock-verdict a:hover { background: var(--inset); text-decoration: none; }
+.stock-verdict span { color: var(--text-secondary); font-size: .82rem; }
+.stock-verdict strong { font-size: 1rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stock-verdict strong.caution { color: var(--status-caution); }
+.stock-research > .card { scroll-margin-top: 84px; }
+.chart-hint { color: var(--text-secondary); font-size: .82rem; margin: 6px 0 0; }
+@media (max-width: 600px) {
+  .stock-verdict { grid-template-columns: 1fr; }
+  .stock-verdict a { border-right: 0; border-bottom: 1px solid var(--rule); grid-template-columns: auto 1fr; align-items: baseline; gap: 12px; }
+  .stock-verdict a:last-child { border-bottom: 0; }
+  .stock-verdict strong { text-align: right; }
+  .stock-research > .card { scroll-margin-top: 16px; }
+}
+
+/* 樣本外驗證頁的小標籤改為中文後，10px 等寬字太小：改用內文字體與 12px。 */
+.wf-train > span, .wf-test > span, .wf-freeze strong, .wf-badge, .severity-label, .wf-fold-head > div:first-child > span {
+  font-family: inherit; font-size: .75rem; letter-spacing: 0; text-transform: none; }
+.wf-summary-grid small, .wf-pair > span, .wf-pair small, .wf-secondary-metrics dt { font-size: .75rem; }

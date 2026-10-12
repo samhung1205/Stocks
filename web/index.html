@@ -136,7 +136,7 @@ document.getElementById("btn-stale-update").addEventListener("click", async e =>
     await api("/api/admin/update-daily", { method: "POST", body: {} });
     toast("已更新今日行情");
     loadDashboard(); loadStatus(); loadFreshness();
-  } catch (err) { toast("失敗：" + err.message); }
+  } catch (err) { toastError("今日行情未更新：" + err.message); }
   e.target.disabled = false;
   loadFreshness();
 });
@@ -211,24 +211,34 @@ async function loadStatus() {
     `股票 ${s.stocks} 檔｜行情 ${s.quote_days} 天（至 ${s.latest_date || "—"}）｜月營收 ${s.revenue_months} 個月｜深度資料 ${s.deep_stocks} 檔`;
 }
 
-function bindAdmin(id, path, body, confirmMsg) {
+function bindAdmin(id, path, body, done) {
   document.getElementById(id).addEventListener("click", async e => {
     const btn = e.target;
     btn.disabled = true;
     try {
       const r = await api(path, { method: "POST", body: body || {} });
-      toast(r.note || "完成：" + JSON.stringify(r).slice(0, 120));
+      toast(r.note || done(r), 4000);
       loadStatus(); loadDashboard(); loadFreshness();
-    } catch (err) { toast("失敗：" + err.message); }
+    } catch (err) { toastError(`${btn.textContent}未完成：${err.message}`); }
     btn.disabled = false;
   });
 }
-bindAdmin("btn-sync", "/api/admin/sync-stocks");
-bindAdmin("btn-daily", "/api/admin/update-daily");
-bindAdmin("btn-backfill", "/api/admin/backfill", { days: 180 });
-bindAdmin("btn-revenue", "/api/admin/fetch-revenue", { months: 13 });
+bindAdmin("btn-sync", "/api/admin/sync-stocks", null,
+  r => typeof r.synced === "number" ? `股票清單已同步（${fmt.int(r.synced)} 檔）` : "股票清單已同步");
+bindAdmin("btn-daily", "/api/admin/update-daily", null, () => "今日行情更新已執行，結果見上方資料狀態");
+bindAdmin("btn-backfill", "/api/admin/backfill", { days: 180 }, () => "歷史回填已在背景執行");
+bindAdmin("btn-revenue", "/api/admin/fetch-revenue", { months: 13 },
+  r => `近 ${r.months ?? 13} 個月營收已在背景抓取`);
 
-loadDashboard(); loadWatchlist(); loadStatus(); loadFreshness();
+loadDashboard().catch(err => {
+  document.getElementById("dashboard-asof").textContent = "無法讀取";
+  toastError("市場概況無法載入：" + err.message);
+});
+loadWatchlist().catch(err => {
+  document.querySelector("#watch-table tbody").innerHTML =
+    `<tr><td colspan="6" class="l" role="alert">觀察名單無法載入：${escapeHtml(err.message)}</td></tr>`;
+});
+loadStatus(); loadFreshness();
 </script>
 </body>
 </html>

@@ -79,14 +79,17 @@ async function load() {
   wrap.querySelectorAll(".tier-sel").forEach(sel => sel.addEventListener("change", async e => {
     const sid = e.target.closest("tr").dataset.sid;
     const row = allRows.find(r => r.stock_id === sid);
-    await api(`/api/watchlist/${sid}`, { method: "POST",
-      body: { tier: e.target.value, note: row?.note || "" } });
+    try {
+      await api(`/api/watchlist/${sid}`, { method: "POST",
+        body: { tier: e.target.value, note: row?.note || "" } });
+    } catch (err) { toastError(`${sid} 分級未更新：${err.message}`); }
     load();
   }));
   wrap.querySelectorAll(".btn-del").forEach(btn => btn.addEventListener("click", async e => {
     const sid = e.target.closest("tr").dataset.sid;
     if (!confirm(`確定將 ${sid} 移出觀察名單？`)) return;
-    await api(`/api/watchlist/${sid}`, { method: "DELETE" });
+    try { await api(`/api/watchlist/${sid}`, { method: "DELETE" }); }
+    catch (err) { toastError(`${sid} 未移除：${err.message}`); }
     load();
   }));
 }
@@ -107,7 +110,7 @@ document.getElementById("btn-rt").addEventListener("click", async e => {
     }
     document.getElementById("rt-info").textContent =
       `來源 ${rt.provider}（延遲約 ${rt.delay_seconds} 秒）`;
-  } catch (err) { toast("即時報價失敗：" + err.message); }
+  } catch (err) { toastError("即時報價失敗：" + err.message); }
   e.target.disabled = false;
 });
 

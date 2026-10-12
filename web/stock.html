@@ -41,6 +41,12 @@
     <span class="muted" id="val-line">—</span>
   </div>
 
+  <nav class="stock-verdict" aria-label="研究結論摘要">
+    <a href="#system-evidence"><span>系統證據</span><strong id="verdict-evidence">讀取中…</strong></a>
+    <a href="#stock-judgment"><span>人工評分</span><strong id="verdict-score">讀取中…</strong></a>
+    <a href="#stock-risk"><span>風險與警訊</span><strong id="verdict-risk">讀取中…</strong></a>
+  </nav>
+
   <div class="stock-layout mt">
     <div class="stock-chart-area">
       <div class="tabs" id="tabs">
@@ -54,6 +60,7 @@
 
       <div class="card tab-panel" id="panel-kline">
         <div id="chart-kline" class="chart tall"></div>
+        <p class="chart-hint">拖曳可平移；按住 Ctrl 加滾輪（或觸控板雙指縮放）調整區間，也可拖曳下方滑桿。</p>
         <div class="muted" id="tech-line"></div>
       </div>
       <div class="card tab-panel" id="panel-revenue" style="display:none">
@@ -83,11 +90,11 @@
     </div>
 
     <div class="stock-research">
-      <div class="card system-evidence">
+      <div class="card system-evidence" id="system-evidence">
         <h2>系統證據 <span class="badge" id="tilt-badge"></span></h2>
         <div id="narrative">載入中…</div>
       </div>
-      <div class="card stock-judgment">
+      <div class="card stock-judgment" id="stock-judgment">
         <h2>人工判斷與評分 <span class="muted" id="score-total"></span></h2>
         <div id="scorecard">載入中…</div>
         <label for="score-note">備註</label>
@@ -97,7 +104,7 @@
           <span class="muted" id="score-verdict"></span>
         </div>
       </div>
-      <div class="card stock-risk">
+      <div class="card stock-risk" id="stock-risk">
         <h2>風險與警訊</h2>
         <div id="alerts">載入中…</div>
         <h3>治理人工查核（無免費結構化資料）</h3>
@@ -119,7 +126,12 @@ const SID = qs("id");
 if (!SID) location.href = "index.html";
 const from = qs("from");
 const back = document.getElementById("stock-back");
-if (from === "screener") { back.href = "screener.html"; back.textContent = "← 返回全市場篩選器"; }
+if (from === "screener") {
+  let last = "";
+  try { last = sessionStorage.getItem("screener:last") || ""; } catch {}
+  back.href = last.startsWith("screener.html?") ? last : "screener.html";
+  back.textContent = "← 返回全市場篩選器";
+}
 if (from === "watchlist") { back.href = "watchlist.html"; back.textContent = "← 返回觀察名單"; }
 document.getElementById("link-plan").href = `journal.html?plan=${SID}`;
 
@@ -151,7 +163,7 @@ async function loadTab(tab) {
     if (tab === "health") await drawHealth();
     if (tab === "valuation") await drawValuation();
     if (tab === "chips") await drawChips();
-  } catch (err) { toast(`${tab} 載入失敗：${err.message}`); loaded[tab] = false; }
+  } catch (err) { toastError(`圖表載入失敗：${err.message}`); loaded[tab] = false; }
 }
 
 /* ── 頭部 ── */
@@ -174,20 +186,25 @@ async function loadHead() {
     document.getElementById("val-line").textContent =
       `PE ${fmt.num(valuation.pe, 1)}｜PB ${fmt.num(valuation.pb, 2)}｜殖利率 ${fmt.pct(valuation.dividend_yield)}`;
   }
-  if (watchlist) document.getElementById("watch-tier").value = watchlist.tier;
+  if (watchlist) document.getElementById("watch-tier").value = watchTier = watchlist.tier;
 }
 
+let watchTier = "";
 document.getElementById("watch-tier").addEventListener("change", async e => {
   const v = e.target.value;
   if (!v) return;
-  if (v === "__remove__") {
-    await api(`/api/watchlist/${SID}`, { method: "DELETE" });
-    e.target.value = "";
-    toast("已移出觀察名單");
-  } else {
-    await api(`/api/watchlist/${SID}`, { method: "POST", body: { tier: v } });
-    toast("已加入觀察名單");
-  }
+  try {
+    if (v === "__remove__") {
+      await api(`/api/watchlist/${SID}`, { method: "DELETE" });
+      watchTier = "";
+      toast("已移出觀察名單");
+    } else {
+      await api(`/api/watchlist/${SID}`, { method: "POST", body: { tier: v } });
+      watchTier = v;
+      toast("已加入觀察名單");
+    }
+  } catch (err) { toastError("觀察名單未更新：" + err.message); }
+  e.target.value = watchTier;
 });
 
 document.getElementById("btn-refresh").addEventListener("click", async e => {
@@ -196,7 +213,7 @@ document.getElementById("btn-refresh").addEventListener("click", async e => {
     await api(`/api/stocks/${SID}/deep?force=true`);
     toast("資料已更新，重新載入頁面");
     location.reload();
-  } catch (err) { toast("失敗：" + err.message); e.target.disabled = false; }
+  } catch (err) { toastError("資料未更新：" + err.message); e.target.disabled = false; e.target.textContent = "重新抓取資料"; }
 });
 
 document.getElementById("btn-live").addEventListener("click", async e => {
@@ -257,7 +274,8 @@ async function drawKline() {
       { type: "value", gridIndex: 1, ...axisStyle(), axisLabel: { color: CHART_THEME.MUTED, formatter: v => fmt.int(v) } },
     ],
     dataZoom: [
-      { type: "inside", xAxisIndex: [0, 1], start: 55, end: 100 },
+      { type: "inside", xAxisIndex: [0, 1], start: 55, end: 100,
+        zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false },  // 滾輪留給頁面捲動
       { type: "slider", xAxisIndex: [0, 1], bottom: 0, height: 16,
         borderColor: CHART_THEME.BORDER, backgroundColor: CHART_THEME.PANEL2 },
     ],
@@ -463,6 +481,7 @@ async function loadNarrative() {
   const badge = document.getElementById("tilt-badge");
   badge.textContent = `${s.tilt}（量化 ${s.quant_score}/${s.quant_max}）`;
   badge.className = "badge " + (s.tilt === "偏多" ? "up" : s.tilt === "偏空" ? "down" : "");
+  document.getElementById("verdict-evidence").textContent = `${s.tilt}｜量化 ${s.quant_score}/${s.quant_max}`;
   const rows = s.lines.map(l => `
     <p style="margin:6px 0"><b>${l.label}</b>
       <span class="muted">（${l.effective != null ? l.effective : "—"}/${l.max}分）</span>：
@@ -491,6 +510,8 @@ async function loadScore() {
   document.getElementById("score-total").textContent =
     card.complete ? `總分 ${card.total} / 100` : `（${card.total} 分，質化項未評）`;
   document.getElementById("score-verdict").textContent = card.verdict || "產業/競爭力/催化劑需人工評分";
+  document.getElementById("verdict-score").textContent =
+    card.complete ? `${card.total} / 100` : `${card.total} 分｜質化項未評`;
   if (card.note) document.getElementById("score-note").value = card.note;
 }
 
@@ -499,9 +520,11 @@ document.getElementById("btn-save-score").addEventListener("click", async () => 
   document.querySelectorAll("#scorecard input").forEach(inp => {
     payload[inp.dataset.key] = inp.value === "" ? null : parseFloat(inp.value);
   });
-  await api(`/api/stocks/${SID}/score`, { method: "POST", body: payload });
-  toast("評分已儲存");
-  loadScore();
+  try {
+    await api(`/api/stocks/${SID}/score`, { method: "POST", body: payload });
+    toast("評分已儲存");
+    loadSection("scorecard", "verdict-score", loadScore);
+  } catch (err) { toastError("評分未儲存：" + err.message); }
 });
 
 /* ── 警訊與查核 ── */
@@ -510,12 +533,36 @@ async function loadAlerts() {
   document.getElementById("alerts").innerHTML = a.alerts.length
     ? a.alerts.map(x => `<p class="warn" style="margin:6px 0">⚠ ${x.message}</p>`).join("")
     : '<p class="muted" style="margin:6px 0">未偵測到量化警訊</p>';
+  const risk = document.getElementById("verdict-risk");
+  risk.textContent = a.alerts.length ? `${a.alerts.length} 項量化警訊` : "未偵測到量化警訊";
+  risk.classList.toggle("caution", a.alerts.length > 0);
   document.getElementById("checklist").innerHTML = a.checklist.map(c =>
     `<p style="margin:6px 0"><a href="${c.url}" target="_blank">↗</a> ${c.item}</p>`).join("");
 }
 
-loadHead().then(() => { loadTab("kline"); loadNarrative(); loadScore(); loadAlerts(); })
-  .catch(err => { document.getElementById("title").textContent = err.message; });
+/* 各區塊獨立載入；失敗時就地說明並提供重試，不留下永遠的「載入中」。 */
+function loadSection(bodyId, verdictId, fn) {
+  return fn().catch(err => {
+    const el = document.getElementById(bodyId);
+    el.innerHTML = `<p class="inline-error" role="alert">無法載入：${escapeHtml(err.message)}
+      <button type="button" class="ghost small">重試</button></p>`;
+    el.querySelector("button").addEventListener("click", () => {
+      el.textContent = "載入中…";
+      loadSection(bodyId, verdictId, fn);
+    });
+    document.getElementById(verdictId).textContent = "無法載入";
+  });
+}
+
+loadHead().then(() => {
+  loadTab("kline");
+  loadSection("narrative", "verdict-evidence", loadNarrative);
+  loadSection("scorecard", "verdict-score", loadScore);
+  loadSection("alerts", "verdict-risk", loadAlerts);
+}).catch(err => {
+  document.getElementById("title").textContent = "無法載入個股資料";
+  toastError(err.message);
+});
 </script>
 </body>
 </html>
