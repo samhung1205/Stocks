@@ -1,5 +1,7 @@
 # Deployment Profile
 
+> 2026-10-12：已部署前端介面更新（commit `b0584f0`），健康檢查通過，登入後畫面尚待使用者確認；詳見 [Railway 部署紀錄](docs/railway-deployment.md)。
+>
 > 2026-10-06 部署進度：Railway Hobby 的 Stocks 已部署至 [正式網址](https://stocks-production-eeb3.up.railway.app)。資料庫一致性與重啟保存、台北時區排程、HTTPS 及未登入保護均已驗證；Compute 硬上限 US$10、提醒 US$8 已儲存。使用者已確認登入成功且使用正常。10/5 部署驗證時官方資料更新回報 partial（9/29、9/30 缺漏），本次未重新核對資料更新狀態，詳見 [Railway 部署紀錄](docs/railway-deployment.md)。下方為 2026-09-27 的原始部署評估與當時的待辦清單，不代表現行未完成事項；最新進度以部署紀錄為準。新 Railway 服務使用 IaC。
 
 產生日期：2026-09-27。使用者提供的平台資料原核對於 2026-09-07；以下限制已於 2026-09-27 再查官方文件。價格與限制可能變動，實際申請前請重新核對文末連結。
