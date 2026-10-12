@@ -22,9 +22,8 @@ def fetch(dataset: str, data_id: str = "", start_date: str = "",
         params["start_date"] = start_date
     if end_date:
         params["end_date"] = end_date
-    if FINMIND_TOKEN:
-        params["token"] = FINMIND_TOKEN
-    data = get_json(API, params=params)
+    headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"} if FINMIND_TOKEN else None
+    data = get_json(API, params=params, headers=headers)
     if data.get("status") != 200:
         raise FinMindError(f"FinMind {dataset} {data_id}: {data.get('msg')}")
     return data.get("data") or []
@@ -47,13 +46,14 @@ def price_history(stock_id: str, start_date: str) -> list[dict]:
     } for r in rows]
 
 
-def month_revenue(stock_id: str, start_date: str) -> list[dict]:
+def month_revenue(stock_id: str, start_date: str, end_date: str = "") -> list[dict]:
     """月營收（原始值；YoY/MoM 由服務層計算）。"""
-    rows = fetch("TaiwanStockMonthRevenue", stock_id, start_date)
+    rows = fetch("TaiwanStockMonthRevenue", stock_id, start_date, end_date)
     return [{
         "stock_id": r["stock_id"],
         "ym": f"{r['revenue_year']}-{int(r['revenue_month']):02d}",
         "revenue": r.get("revenue"),
+        **revenue_publication(r),
     } for r in rows]
 
 
@@ -89,3 +89,59 @@ def dividend_results(stock_id: str, start_date: str) -> list[dict]:
         "stock_id": r["stock_id"], "date": r["date"],
         "dividend": r.get("stock_and_cache_dividend"),
     } for r in rows]
+
+
+def revenue_publication(row: dict) -> dict:
+    import datetime as dt
+    value = str(row.get('create_time') or '')[:10]
+    try:
+        observed = dt.date.fromisoformat(value)
+        y, m = int(row['revenue_year']), int(row['revenue_month'])
+        next_month = dt.date(y + (m == 12), m % 12 + 1, 1)
+        if observed >= next_month and value >= '2026-04-21':
+            return {'publish_date': value, 'publish_source': 'observed_finmind'}
+    except ValueError:
+        pass
+    return {}  # generic writer adds explicitly Assumed deadline
+
+
+def valuation_history(stock_id: str, start: str, end: str) -> list[dict]:
+    from app.datasources.base import num
+    return [{'stock_id': r['stock_id'], 'date': r['date'],
+             'pe': num(r.get('PER')), 'pb': num(r.get('PBR')),
+             'dividend_yield': num(r.get('dividend_yield'))}
+            for r in fetch('TaiwanStockPER', stock_id, start, end)
+            if start <= r['date'] <= end]
+
+
+def total_return_index(start: str, end: str) -> list[dict]:
+    from app.datasources.base import num
+    out = []
+    for r in fetch('TaiwanStockTotalReturnIndex', 'TAIEX', start, end):
+        value = num(r.get('price'))
+        if r['stock_id'] != 'TAIEX' or value is None or value <= 0:
+            raise FinMindError('Invalid TAIEX total return row')
+        if start <= r['date'] <= end:
+            out.append({'benchmark_id': 'TAIEX_TR', 'date': r['date'], 'value': value,
+                        'source': 'FinMind:TaiwanStockTotalReturnIndex'})
+    return out
+
+
+def action_history(dataset: str, stock_id: str, start: str, end: str) -> list[dict]:
+    import json
+    from app import corporate_actions
+    from app.datasources.base import num
+    if dataset not in ('TaiwanStockDividendResult', 'TaiwanStockSplitPrice'):
+        raise ValueError('Unsupported corporate action dataset')
+    out = []
+    for r in fetch(dataset, stock_id, start, end):
+        if not start <= r['date'] <= end:
+            continue
+        derived = corporate_actions.fields_for('FinMind:' + dataset, r)
+        out.append({'stock_id': r['stock_id'], 'date': r['date'],
+                    'before_price': num(r.get('before_price')), 'after_price': num(r.get('after_price')),
+                    # cash_dividend / share_multiplier are set only when verifiably derivable
+                    # from the source record; mixed 權息 is left unresolved.
+                    **derived,
+                    'source': 'FinMind:' + dataset, 'raw_json': json.dumps(r, ensure_ascii=False)})
+    return out

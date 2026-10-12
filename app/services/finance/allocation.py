@@ -135,15 +135,25 @@ def role_weights(age: float, retire_age: float, equity_bias: float,
 def allocate(selected: list[str], roles: dict[str, float],
              initial_capital: float, monthly: float,
              override: dict[str, float] | None = None,
-             returns: dict[str, float] | None = None) -> dict:
+             returns: dict[str, float] | None = None,
+             source_types: dict[str, str] | None = None) -> dict:
     """把角色權重攤到啟用中的標的，算出每檔的目標權重與投入金額。
 
     selected  啟用的標的代號（含 CASH）
     roles     各角色目標權重 %
     override  使用者自訂的每檔權重 %（有值就用它，規則結果仍會回傳供對照）
     returns   使用者自訂的每檔假設報酬 %（缺的用 role 預設）
+    source_types  Stage I1.1：{stock_id: source_type}，只有 `"manual"` 有特殊意義——
+                  這些標的一律用 `universe.meta(sid, "manual")` 分類成 `manual`
+                  role（assumed_return=None、asset='other'、region='unspecified'），
+                  既不套用任何 ETF role 預設報酬，也不會被誤分類成 core_tw / TW
+                  equity（見 docs/RESEARCH_CONTRACTS.md §16）。其他 source_type
+                  （或缺席）一律走 `meta(sid)` 的既有 fallback，語意不變；
+                  `strategy_portfolio` 標的不需要出現在這裡——`universe.meta()`
+                  用 `"portfolio:"` 前綴自己判斷，不靠這個參數。
     """
     returns = returns or {}
+    source_types = source_types or {}
     selected = [s for s in selected if s]
     if not selected:
         return {"targets": [], "suggested": [], "using_override": False,
@@ -153,7 +163,7 @@ def allocate(selected: list[str], roles: dict[str, float],
 
     by_role: dict[str, list[str]] = {}
     for sid in selected:
-        by_role.setdefault(universe.meta(sid)["role"], []).append(sid)
+        by_role.setdefault(universe.meta(sid, source_types.get(sid))["role"], []).append(sid)
 
     # 規則權重：角色權重在該角色的標的間均分；沒有標的的角色，其權重按比例回流到有標的的角色
     live = {r: v for r, v in roles.items() if by_role.get(r)}
@@ -172,8 +182,14 @@ def allocate(selected: list[str], roles: dict[str, float],
 
     rows = []
     for sid in selected:
-        m = universe.meta(sid)
+        m = universe.meta(sid, source_types.get(sid))
         r = returns.get(sid)
+        if r not in (None, ""):
+            exp_return = float(r)
+        elif source_types.get(sid) == "manual":
+            exp_return = None      # manual：明確不套用 role 預設，等使用者自己設定假設
+        else:
+            exp_return = universe.ROLE_DEFAULTS[m["role"]]["assumed_return"]   # None for strategy_portfolio role
         rows.append({
             "stock_id": sid, "role": m["role"],
             "role_label": universe.ROLE_DEFAULTS[m["role"]]["label"],
@@ -183,24 +199,30 @@ def allocate(selected: list[str], roles: dict[str, float],
             "income_focus": m["income_focus"],
             "weight": round(weights[sid], 1),
             "suggested_weight": suggested[sid],
-            "expected_return": float(r) if r not in (None, "") else universe.default_return(sid),
+            "expected_return": exp_return,
             "initial_amount": round(initial_capital * weights[sid] / 100),
             "monthly_amount": round(monthly * weights[sid] / 100),
         })
     rows.sort(key=lambda x: (ROLES.index(x["role"]) if x["role"] in ROLES else 9,
                              -x["weight"]))
 
-    # 組合層級指標：以權重加權（權重和不為 100 時以實際和為分母，避免灌水）
+    # 組合層級指標：以權重加權（權重和不為 100 時以實際和為分母，避免灌水）。
+    # expected_return 沒有設定假設報酬的標的（None）明確排除在分母外——保留它的
+    # 資金/權重，只是不讓一個「還沒有假設」的標的把加權平均拉向 0（那等同於悄悄
+    # 假設它是 0% 報酬，跟自動套用 CAGR 一樣是不該有的 silent fallback）。
     denom = weight_sum if weight_sum > 0 else 100.0
-    exp_return = sum(r["weight"] * r["expected_return"] for r in rows) / denom
-    exp_fee = sum(r["weight"] * r["fee"] for r in rows) / denom
+    priced_rows = [row for row in rows if row["expected_return"] is not None]
+    priced_weight = sum(row["weight"] for row in priced_rows)
+    exp_return = (sum(row["weight"] * row["expected_return"] for row in priced_rows) / priced_weight
+                 if priced_weight > 0 else None)
+    exp_fee = sum(row["weight"] * row["fee"] for row in rows) / denom
 
     return {
         "targets": rows,
         "suggested": suggested,
         "using_override": using_override,
         "weight_sum": weight_sum,
-        "expected_return": round(exp_return, 2),
+        "expected_return": round(exp_return, 2) if exp_return is not None else None,
         "expected_fee": round(exp_fee, 3),
         "exposure": exposures(rows, denom),
         "warnings": warnings(rows, denom),
@@ -260,4 +282,22 @@ def warnings(rows: list[dict], denom: float) -> list[dict]:
                     "message": f"{'、'.join(custom)} 不在內建名單中，"
                                "其角色、資產類別與國家曝險為預設值，請自行確認。",
                     "detail": "內建名單的分類為人工維護，免費資料源無法提供這些欄位。"})
+
+    # Stage I1：沒有假設報酬的標的（manual／strategy_portfolio 沒有 role 預設可用）——
+    # 陳述事實，不假裝算出了一個報酬率（見 allocate() 的 priced_rows 排除邏輯）。
+    unpriced = [r["stock_id"] for r in rows if r["expected_return"] is None and r["weight"] > 0]
+    if unpriced:
+        out.append({"level": "assumption",
+                    "message": f"{'、'.join(unpriced)}：尚未設定假設報酬（planning return not "
+                               "configured），此標的的金額配置維持，但不計入報酬率加權平均。",
+                    "detail": "Strategy Portfolio／自訂資產不會自動套用預設值或研究結果作為"
+                              "假設報酬，請在假設中明確設定。"})
+
+    sp = [r["stock_id"] for r in rows if r["role"] == "strategy_portfolio" and r["weight"] > 0]
+    if sp:
+        out.append({"level": "approximation",
+                    "message": f"{'、'.join(sp)}：資產類別／地區曝險為簡化近似值（目前假設全數"
+                               "台股/股票），實際依策略持股與現金水位而定。",
+                    "detail": "此近似值僅供資產配置提示參考，不作為研究或執行的限制條件；"
+                              "詳細研究證據請見對應的 Strategy Portfolio evidence。"})
     return out

@@ -38,7 +38,7 @@ def _throttle(host: str) -> None:
 
 
 def get(url: str, params: dict | None = None, cache_ttl: float = 0,
-        retries: int = 2) -> httpx.Response:
+        retries: int = 2, headers: dict | None = None) -> httpx.Response:
     """帶限速與重試的 GET。cache_ttl>0 時以 URL+params 快取回應。"""
     key = f"{url}|{params}"
     if cache_ttl > 0:
@@ -50,7 +50,7 @@ def get(url: str, params: dict | None = None, cache_ttl: float = 0,
     for attempt in range(retries + 1):
         _throttle(host)
         try:
-            resp = _client.get(url, params=params)
+            resp = _client.get(url, params=params, headers=headers)
             resp.raise_for_status()
             if cache_ttl > 0:
                 _cache[key] = (time.time(), resp)
@@ -68,8 +68,8 @@ def get(url: str, params: dict | None = None, cache_ttl: float = 0,
     raise ConnectionError(f"GET {url} 失敗：{last_err}") from last_err
 
 
-def get_json(url: str, params: dict | None = None, cache_ttl: float = 0):
-    return get(url, params=params, cache_ttl=cache_ttl).json()
+def get_json(url: str, params: dict | None = None, cache_ttl: float = 0, headers: dict | None = None):
+    return get(url, params=params, cache_ttl=cache_ttl, headers=headers).json()
 
 
 def num(v) -> float | None:

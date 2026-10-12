@@ -5,18 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>財務規劃 — 台股分析</title>
 <link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script src="vendor/echarts.min.js"></script>
 </head>
 <body>
 <main class="fin-main">
-  <h1>財務規劃與 ETF 長期投資</h1>
+  <header class="desk-page-head">
+    <div><div class="desk-kicker">個人決策 / 規劃卷宗</div><h1>財務規劃與長期投資</h1><p class="muted">研究證據與未來規劃假設分開記錄；試算結果不是報酬預測。</p></div>
+    <div class="desk-asof"><span>工作流程</span><strong>輸入 → 假設 → 試算</strong></div>
+  </header>
 
   <div class="fin-bar">
-    <label style="margin:0">情境</label>
+    <label style="margin:0" for="profile-sel">情境</label>
     <select id="profile-sel"></select>
     <button id="btn-new" class="ghost small" type="button">新增情境</button>
     <button id="btn-save" class="small" type="button">儲存</button>
     <button id="btn-del" class="ghost small" type="button">刪除</button>
+    <span id="planner-form-error" class="fin-source-error" role="alert" tabindex="-1" hidden></span>
     <span class="grow"></span>
     <button id="btn-refresh-etf" class="ghost small" type="button">補齊 ETF 歷史資料</button>
     <span class="muted" id="save-hint"></span>
@@ -33,12 +38,12 @@
       <div class="card fin-step" data-step="1">
         <h2>個人基本資料 <span class="step-n">Step 1</span></h2>
         <div class="fin-grid">
-          <div><label>目前年齡</label><input type="number" id="f-age" placeholder="30"></div>
-          <div><label>預計退休年齡</label><input type="number" id="f-retire_age" placeholder="65"></div>
-          <div><label>預計壽命（退休試算用）</label><input type="number" id="f-life_expectancy" placeholder="90"></div>
-          <div><label>投資年限（空白＝到退休為止）</label><input type="number" id="f-horizon_years" placeholder="35"></div>
+          <div><label for="f-age">目前年齡</label><input type="number" id="f-age" placeholder="30"></div>
+          <div><label for="f-retire_age">預計退休年齡</label><input type="number" id="f-retire_age" placeholder="65"></div>
+          <div><label for="f-life_expectancy">預計壽命（退休試算用）</label><input type="number" id="f-life_expectancy" placeholder="90"></div>
+          <div><label for="f-horizon_years">投資年限（空白＝到退休為止）</label><input type="number" id="f-horizon_years" placeholder="35"></div>
         </div>
-        <label>投資主要目的</label>
+        <label for="f-goal">投資主要目的</label>
         <select id="f-goal"></select>
         <p class="fin-hint">投資目的會影響建議的每月投資金額——短期內可能要動用大筆現金的目標
           （買房、子女教育），建議的投資比例會保留較多餘裕。</p>
@@ -49,39 +54,39 @@
         <h2>目前財務狀況 <span class="step-n">Step 2</span></h2>
         <fieldset><legend>收入（每月）</legend>
           <div class="fin-grid" style="padding:0 10px 10px">
-            <div><label>月收入</label><input type="number" id="f-income_monthly"></div>
-            <div><label>其他固定收入</label><input type="number" id="f-income_other"></div>
-            <div style="grid-column:1/-1"><label>年終／獎金（年，選填）</label>
+            <div><label for="f-income_monthly">月收入</label><input type="number" id="f-income_monthly"></div>
+            <div><label for="f-income_other">其他固定收入</label><input type="number" id="f-income_other"></div>
+            <div style="grid-column:1/-1"><label for="f-bonus_annual">年終／獎金（年，選填）</label>
               <input type="number" id="f-bonus_annual"></div>
           </div>
         </fieldset>
         <fieldset><legend>必要支出（每月）</legend>
           <div class="fin-grid" style="padding:0 10px 10px">
-            <div><label>固定生活支出</label><input type="number" id="f-exp_living"></div>
-            <div><label>房租／房貸</label><input type="number" id="f-exp_housing"></div>
-            <div><label>保險</label><input type="number" id="f-exp_insurance"></div>
-            <div><label>其他貸款</label><input type="number" id="f-exp_loan"></div>
-            <div style="grid-column:1/-1"><label>其他固定支出</label>
+            <div><label for="f-exp_living">固定生活支出</label><input type="number" id="f-exp_living"></div>
+            <div><label for="f-exp_housing">房租／房貸</label><input type="number" id="f-exp_housing"></div>
+            <div><label for="f-exp_insurance">保險</label><input type="number" id="f-exp_insurance"></div>
+            <div><label for="f-exp_loan">其他貸款</label><input type="number" id="f-exp_loan"></div>
+            <div style="grid-column:1/-1"><label for="f-exp_other">其他固定支出</label>
               <input type="number" id="f-exp_other"></div>
           </div>
         </fieldset>
         <fieldset><legend>現有資產</legend>
           <div class="fin-grid" style="padding:0 10px 10px">
-            <div><label>現金</label><input type="number" id="f-asset_cash"></div>
-            <div><label>定存</label><input type="number" id="f-asset_deposit"></div>
-            <div><label>股票</label><input type="number" id="f-asset_stock"></div>
-            <div><label>ETF</label><input type="number" id="f-asset_etf"></div>
-            <div><label>債券</label><input type="number" id="f-asset_bond"></div>
-            <div><label>其他投資</label><input type="number" id="f-asset_other"></div>
+            <div><label for="f-asset_cash">現金</label><input type="number" id="f-asset_cash"></div>
+            <div><label for="f-asset_deposit">定存</label><input type="number" id="f-asset_deposit"></div>
+            <div><label for="f-asset_stock">股票</label><input type="number" id="f-asset_stock"></div>
+            <div><label for="f-asset_etf">ETF</label><input type="number" id="f-asset_etf"></div>
+            <div><label for="f-asset_bond">債券</label><input type="number" id="f-asset_bond"></div>
+            <div><label for="f-asset_other">其他投資</label><input type="number" id="f-asset_other"></div>
           </div>
         </fieldset>
         <fieldset><legend>負債（餘額）</legend>
           <div class="fin-grid" style="padding:0 10px 10px">
-            <div><label>房貸</label><input type="number" id="f-debt_mortgage"></div>
-            <div><label>車貸</label><input type="number" id="f-debt_car"></div>
-            <div><label>信貸</label><input type="number" id="f-debt_credit"></div>
-            <div><label>卡債</label><input type="number" id="f-debt_card"></div>
-            <div style="grid-column:1/-1"><label>其他負債</label>
+            <div><label for="f-debt_mortgage">房貸</label><input type="number" id="f-debt_mortgage"></div>
+            <div><label for="f-debt_car">車貸</label><input type="number" id="f-debt_car"></div>
+            <div><label for="f-debt_credit">信貸</label><input type="number" id="f-debt_credit"></div>
+            <div><label for="f-debt_card">卡債</label><input type="number" id="f-debt_card"></div>
+            <div style="grid-column:1/-1"><label for="f-debt_other">其他負債</label>
               <input type="number" id="f-debt_other"></div>
           </div>
         </fieldset>
@@ -92,9 +97,9 @@
       <!-- Step 3 投資目標與金額 -->
       <div class="card fin-step" data-step="3">
         <h2>投資目標與金額 <span class="step-n">Step 3</span></h2>
-        <label>初始本金（空白＝用現有投資資產合計）</label>
+        <label for="f-a-initial_capital">初始本金（空白＝用現有投資資產合計）</label>
         <input type="number" id="f-a-initial_capital">
-        <label>每月投資金額（空白＝用系統建議區間的中位數）</label>
+        <label for="f-monthly_invest">每月投資金額（空白＝用系統建議區間的中位數）</label>
         <input type="number" id="f-monthly_invest">
         <div id="invest-suggest" class="fin-hint"></div>
         <div class="flex mt">
@@ -111,7 +116,7 @@
       <div class="card fin-step" data-step="4">
         <h2>風險承受能力 <span class="step-n">Step 4</span></h2>
         <div id="risk-questions"></div>
-        <label>人工指定風險型態（覆寫問卷結果）</label>
+        <label for="f-risk_type_manual">人工指定風險型態（覆寫問卷結果）</label>
         <select id="f-risk_type_manual"></select>
         <p class="fin-hint">問卷結果只是起點。如果你認為自己的實際承受度和問卷算出來的不同，
           可以直接指定——就像個股評分表裡人工分數一律可以覆寫自動分數。</p>
@@ -128,9 +133,45 @@
           <span class="muted" id="weight-sum"></span>
         </div>
         <div id="etf-list"></div>
+        <div id="other-source-list"></div>
         <div class="flex mt">
+          <label class="sr-only" for="add-etf">新增其他 ETF 或股票代號</label>
           <input id="add-etf" placeholder="加入其他代號（如 00929）" style="flex:1">
           <button class="ghost small" type="button" id="btn-add-etf">加入</button>
+        </div>
+        <div class="fin-source-add">
+          <label for="investment-source">新增投資來源</label>
+          <select id="investment-source"><option value="etf">ETF（使用上方代號）</option><option value="manual">自訂來源</option><option value="strategy_portfolio">策略投資組合</option></select>
+          <div id="manual-source-form" hidden>
+            <label for="manual-name">自訂名稱</label><input id="manual-name" maxlength="80" placeholder="例如：其他投資">
+            <label for="manual-return">規劃報酬率 (%)</label><input id="manual-return" type="number" step="0.1" placeholder="請明確輸入">
+            <p id="manual-source-error" class="fin-source-error" role="alert" tabindex="-1" hidden></p>
+            <button type="button" class="ghost small" id="add-manual">新增自訂來源</button>
+          </div>
+          <div id="portfolio-source-form" hidden>
+            <p id="source-form-title" class="fin-hint">選擇 Portfolio、固定版本與選填研究結果。</p>
+            <label for="source-portfolio-search">搜尋 Portfolio</label><input id="source-portfolio-search" class="fin-source-search" type="search" placeholder="輸入名稱或編號">
+            <span id="source-portfolio-range" class="fin-source-range" aria-live="polite"></span>
+            <label for="source-portfolio">Portfolio</label><select id="source-portfolio"></select>
+            <label for="source-version">Version</label><select id="source-version"></select>
+            <label for="source-run">已完成研究紀錄（選填）</label><select id="source-run"></select>
+            <p id="source-pin" class="fin-hint" aria-live="polite"></p>
+            <div id="source-evidence" class="fin-evidence" aria-live="polite"></div>
+            <div class="fin-assumption">
+              <h3>規劃假設</h3>
+              <p class="fin-hint">這是你對未來報酬的選擇，不是系統預測。</p>
+              <label for="source-assumption">假設來源</label>
+              <select id="source-assumption"><option value="manual">手動輸入</option><option value="scenario">規劃情境</option><option value="research_informed">參考研究</option></select>
+              <div id="source-scenario-choice" hidden><label for="source-scenario">規劃情境</label><select id="source-scenario"><option value="conservative">保守</option><option value="base">基準</option><option value="optimistic">樂觀</option></select><button type="button" class="ghost small" id="source-use-scenario">採用此情境假設</button></div>
+              <label for="source-return">規劃報酬率 (%)（可留空；參考研究時必填）</label>
+              <input id="source-return" type="number" step="0.1" placeholder="由你輸入，不自動採用 CAGR">
+              <button type="button" class="ghost small" id="source-use-reference" hidden>採用作為規劃假設</button>
+              <p id="source-assumption-note" class="fin-hint" aria-live="polite"></p>
+            </div>
+            <p class="fin-hint">Strategy Portfolio 目前市值只由你手動輸入或留空。若 Step 2 的股票／ETF 資產已含這筆市值，請避免重複輸入。組合內部現金僅供研究參考，不列為 Planner 個人現金。</p>
+            <p id="source-error" class="fin-source-error" role="alert" tabindex="-1" hidden></p>
+            <div class="flex mt"><button type="button" id="source-confirm">確認來源與假設</button><button type="button" class="ghost" id="source-cancel" hidden>取消重新連結</button></div>
+          </div>
         </div>
         <p class="fin-hint">內建名單的角色、資產類別、國家曝險與內扣費用是人工維護的常數，
           免費資料源抓不到這些欄位，可能與最新公開資訊有落差。「歷史含息年化」是實際資料算出來的
@@ -144,16 +185,17 @@
           <input type="checkbox" id="f-a-use_portfolio_return" style="width:auto">
           基準情境採用組合加權預期報酬
         </label>
+        <p id="base-assumption-status" class="fin-hint" aria-live="polite"></p>
         <div class="fin-grid mt" id="rate-inputs">
-          <div><label>保守情境 (%)</label><input type="number" step="0.1" id="f-a-return_conservative"></div>
-          <div><label>基準情境 (%)</label><input type="number" step="0.1" id="f-a-return_base"></div>
-          <div><label>樂觀情境 (%)</label><input type="number" step="0.1" id="f-a-return_optimistic"></div>
+          <div><label for="f-a-return_conservative">保守情境 (%)</label><input type="number" step="0.1" id="f-a-return_conservative"></div>
+          <div><label for="f-a-return_base">基準情境 (%)</label><input type="number" step="0.1" id="f-a-return_base"></div>
+          <div><label for="f-a-return_optimistic">樂觀情境 (%)</label><input type="number" step="0.1" id="f-a-return_optimistic"></div>
         </div>
         <div class="fin-grid">
-          <div><label>通膨率 (%)</label><input type="number" step="0.1" id="f-a-inflation"></div>
-          <div><label>其他年度費用 (%)</label><input type="number" step="0.01" id="f-a-extra_fee"></div>
+          <div><label for="f-a-inflation">通膨率 (%)</label><input type="number" step="0.1" id="f-a-inflation"></div>
+          <div><label for="f-a-extra_fee">其他年度費用 (%)</label><input type="number" step="0.01" id="f-a-extra_fee"></div>
         </div>
-        <label>費用模式</label>
+        <label for="f-a-fee_mode">費用模式</label>
         <select id="f-a-fee_mode">
           <option value="simple">Simple — 忽略費用</option>
           <option value="advanced">Advanced — 計入 ETF 內扣費用與其他費用</option>
@@ -161,7 +203,7 @@
         <label style="display:inline-flex;align-items:center;gap:6px;margin-top:12px">
           <input type="checkbox" id="f-a-dividend_reinvest" style="width:auto"> 股息再投入
         </label>
-        <label>自訂財務目標金額（選填）</label>
+        <label for="f-a-custom_goal">自訂財務目標金額（選填）</label>
         <input type="number" id="f-a-custom_goal" placeholder="如 10000000">
         <p class="fin-hint">關閉「股息再投入」時，配息會離開複利、單獨累積為不生息的現金，
           長期結果會低於再投入——這是刻意呈現的差異，不是計算誤差。</p>
@@ -171,24 +213,24 @@
       <div class="card fin-step" data-step="7">
         <h2>退休設定 <span class="step-n">Step 7</span></h2>
         <div class="fin-grid">
-          <div><label>退休後每月支出（今日購買力）</label>
+          <div><label for="f-r-expense_monthly">退休後每月支出（今日購買力）</label>
             <input type="number" id="f-r-expense_monthly"></div>
-          <div><label>每月退休金</label><input type="number" id="f-r-pension_monthly"></div>
-          <div><label>其他退休收入（月）</label><input type="number" id="f-r-other_income_monthly"></div>
-          <div><label>退休後年報酬 (%)（空白＝保守情境）</label>
+          <div><label for="f-r-pension_monthly">每月退休金</label><input type="number" id="f-r-pension_monthly"></div>
+          <div><label for="f-r-other_income_monthly">其他退休收入（月）</label><input type="number" id="f-r-other_income_monthly"></div>
+          <div><label for="f-r-retire_return">退休後年報酬 (%)（空白＝保守情境）</label>
             <input type="number" step="0.1" id="f-r-retire_return"></div>
         </div>
-        <label>提款方式</label>
+        <label for="f-r-withdraw_mode">提款方式</label>
         <select id="f-r-withdraw_mode">
           <option value="gap">依退休後收支缺口提款</option>
           <option value="rate">依退休當下資產的提款率</option>
           <option value="amount">自訂每月提款金額</option>
         </select>
         <div class="fin-grid">
-          <div><label>年度提款率 (%)</label><input type="number" step="0.1" id="f-r-withdraw_rate"></div>
-          <div><label>自訂每月提款</label><input type="number" id="f-r-withdraw_monthly"></div>
+          <div><label for="f-r-withdraw_rate">年度提款率 (%)</label><input type="number" step="0.1" id="f-r-withdraw_rate"></div>
+          <div><label for="f-r-withdraw_monthly">自訂每月提款</label><input type="number" id="f-r-withdraw_monthly"></div>
         </div>
-        <label>退休前 3 年壓力情境年報酬 (%)</label>
+        <label for="f-r-sorr_shock">退休前 3 年壓力情境年報酬 (%)</label>
         <input type="number" step="0.1" id="f-r-sorr_shock">
         <p class="fin-hint">退休初期遇到負報酬，提款會在低點賣出部位，即使之後市場回升，
           資產也可能回不到原本的軌道（Sequence of Returns Risk）。右側會同時顯示正常與壓力情境。</p>
@@ -205,6 +247,15 @@
       <div class="card"><p class="muted" style="margin:0">填入左側資料後，結果會即時更新。</p></div>
     </section>
   </div>
+  <dialog id="new-profile-dialog" class="fin-dialog" aria-labelledby="new-profile-title">
+    <form id="new-profile-form" method="dialog">
+      <h2 id="new-profile-title">新增情境</h2>
+      <label for="new-profile-name">情境名稱</label>
+      <input id="new-profile-name" required maxlength="120">
+      <p id="new-profile-error" class="fin-source-error" role="alert" hidden></p>
+      <div class="flex mt"><button type="button" class="ghost" id="new-profile-cancel">取消</button><button type="submit">建立</button></div>
+    </form>
+  </dialog>
 </main>
 
 <script src="js/common.js"></script>

@@ -5,26 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>儀表板 — 台股分析</title>
 <link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script src="vendor/echarts.min.js"></script>
 </head>
 <body>
-<main>
-  <h1>市場儀表板</h1>
+<main class="dashboard-main">
+  <header class="desk-page-head"><div><p class="desk-kicker">市場研究 / 每日卷宗</p><h1>市場概況</h1><p class="muted">先確認資料日期，再看大盤與觀察名單。</p></div><div class="desk-asof">資料截至 <strong id="dashboard-asof">讀取中…</strong></div></header>
 
-  <div class="card mt" id="stale-banner" style="display:none;border-color:var(--warn)">
+  <div class="card mt" id="stale-banner" style="display:none">
     <div class="flex">
-      <span class="warn">⚠ <span id="stale-text"></span></span>
+      <span><span id="stale-icon">⚠</span> <span id="stale-text"></span></span>
       <span class="spacer"></span>
-      <button id="btn-stale-update">立即更新今日行情</button>
+      <button id="btn-stale-update" class="ghost">立即更新今日行情</button>
     </div>
   </div>
 
-  <div class="grid cols-4" id="stat-cards">
+  <section class="dashboard-context" aria-label="市場資料摘要"><div class="grid cols-4" id="stat-cards">
     <div class="card"><div class="k">加權指數</div><div class="v" id="taiex">—</div><div id="taiex-chg" class="muted">—</div></div>
     <div class="card"><div class="k">成交金額</div><div class="v" id="amount">—</div><div class="muted" id="latest-date">—</div></div>
     <div class="card"><div class="k">三大法人（金額）</div><div class="v" id="insti-amt">—</div><div class="muted" id="insti-detail">—</div></div>
     <div class="card"><div class="k">市場寬度（漲/跌）</div><div class="v" id="breadth">—</div><div class="muted" id="breadth-total">—</div></div>
-  </div>
+  </div></section>
 
   <div class="grid cols-2 mt">
     <div class="card">
@@ -42,7 +43,7 @@
     </div>
   </div>
 
-  <div class="card mt">
+  <details class="dashboard-maintenance mt"><summary>資料維護與回補工作 <span id="maintenance-status" class="muted">必要時展開</span></summary><div class="card">
     <h2>資料維護</h2>
     <div class="flex">
       <button id="btn-sync" class="ghost">同步股票清單</button>
@@ -52,39 +53,80 @@
       <span class="spacer"></span>
       <span class="muted" id="db-status">—</span>
     </div>
+    <details class="more mt">
+      <summary>Strategy Lab 資料基礎：5 年歷史回補</summary>
+      <p class="muted">先驗證小範圍，再執行完整工作。全市場歷史及逐檔資料可能需數小時以上；關閉服務後可用同一工作 ID 續跑。API 每次最多執行 100 個單位。</p>
+      <div class="grid cols-3">
+        <label>開始日期<input id="history-start" type="date"></label>
+        <label>結束日期<input id="history-end" type="date"></label>
+        <label>近一年日均成交金額門檻（NT$）<input id="history-threshold" type="number" min="0" step="1000000" value="30000000"></label>
+      </div>
+      <div class="flex mt">
+        <button id="history-create" class="ghost">建立回補工作</button>
+        <label>工作<select id="history-jobs" aria-label="回補工作"></select></label>
+        <button id="history-resume" class="ghost">續跑 25 個單位</button>
+        <button id="history-pause" class="ghost">完成本單位後暫停</button>
+        <button id="history-refresh" class="ghost">更新進度</button>
+      </div>
+      <pre id="history-progress" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere">尚未載入</pre>
+      <p class="alert info">公告日期分為 Actual、Observed（FinMind 入庫日）及 Assumed（推估期限）。嚴格資料查詢排除 Assumed，且公布當天尚不可用。歷史修訂版本、完整下市及轉板歷程仍有缺口。</p>
+    </details>
     <p class="muted" style="margin-bottom:0">
       首次使用順序：①同步股票清單 → ②更新今日行情 → ③回填歷史（背景執行約 10 分鐘，供均線/法人連買篩選）→ ④抓月營收（供營收類篩選）。
-      平日 15:05 會嘗試自動更新，但若電腦當時處於睡眠狀態排程會被跳過——
-      不需要記時間，資料過期時上方會自動跳出提示，點一下就好。
+      平日盤後會自動低頻檢查並補齊（預設 15:05 起，逾時有限次數重試）；
+      若電腦當時處於睡眠狀態排程被跳過，下次開啟伺服器會自動 catch-up 補齊，不需要手動逐日補。
+      不需要記時間，資料狀態一律顯示在上方（已同步／待更新／更新中／部分資料未完成），stale/partial/failed 不會被自動隱藏，需要時點「立即更新」手動補。
     </p>
-  </div>
+  </div></details>
 </main>
 
 <script src="js/common.js"></script>
+<script src="js/data-maintenance.js" defer></script>
 <script>
-/* 判斷資料是否過期：以台灣時間推算「應該已收盤的最近一個交易日」
-   （平日15:00前算前一天，平日15:00後算當天，跳過六日），
-   若最新資料早於這個日期，代表排程被錯過（例如電腦睡眠），需要手動更新。 */
-function expectedTradingDate() {
-  const now = new Date();
-  const d = new Date(now);
-  if (now.getHours() < 15) d.setDate(d.getDate() - 1);
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
-  // 用瀏覽器本地時區的年月日組字串（不可用 toISOString，那是 UTC 會差一天）
-  const pad = n => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/* Stage L1：資料 freshness 一律以伺服器 /api/admin/data-freshness 為準
+   （app/services/data_freshness.py，真的問過資料源才判斷，不用前端 weekday 猜測）。
+   stale/partial/failed 一律顯示，auto-refresh 不會把它們藏起來；running 時也照樣顯示。 */
+const FRESHNESS_LABEL = {
+  fresh: "已同步", partial: "部分資料未完成", stale: "待更新",
+  failed: "更新失敗", unknown: "無法確認（資料源異常）",
+};
+const FRESHNESS_ICON = { fresh: "✓", partial: "◐", stale: "⏳", failed: "✕", unknown: "?" };
+
+function renderFreshness(s) {
+  const banner = document.getElementById("stale-banner");
+  const running = s.current_status === "running";
+  const state = running ? "running" : s.freshness;
+  const label = running ? "更新中…" : (FRESHNESS_LABEL[s.freshness] || s.freshness);
+  document.getElementById("stale-icon").textContent = running ? "…" : (FRESHNESS_ICON[s.freshness] || "?");
+  let detail = `資料截至 ${s.latest_completed_quote_date || "無"}｜最新交易日 ${s.expected_trading_day || "無法確認"}｜狀態：${label}`;
+  if (s.freshness === "partial" && !running) detail += "（部分資料集尚未完整，稍後會自動重試）";
+  if (s.freshness === "failed") detail += s.latest_error ? `｜最後錯誤：${s.latest_error.slice(0, 160)}` : "";
+  if (s.pending_missing_dates && s.pending_missing_dates.length) {
+    detail += `｜待補交易日：${s.pending_missing_dates.slice(0, 5).join("、")}` +
+      (s.pending_missing_dates.length > 5 ? ` 等 ${s.pending_missing_dates.length} 天` : "") +
+      (s.pending_missing_dates_source === "weekday_estimate" ? "（未執行過 Strategy Lab 交易日曆回補，以平日粗估，可能含國定假日）" : "");
+  }
+  document.getElementById("stale-text").textContent = detail;
+  const colors = { fresh: "var(--success)", partial: "var(--warn)", stale: "var(--warn)",
+    failed: "var(--danger)", unknown: "var(--warn)", running: "var(--accent)" };
+  banner.style.borderTopColor = colors[state] || "var(--warn)";
+  banner.style.borderTopWidth = "2px";
+  // fresh 且非 running 時仍保留 banner（顯示「已同步」），不隱藏——stale/partial/failed 不會被 auto-refresh 蓋掉。
+  banner.style.display = "";
+  const btn = document.getElementById("btn-stale-update");
+  btn.disabled = running;
+  btn.textContent = running ? "更新中…" : "立即更新今日行情";
 }
 
-function checkStale(latestDate) {
-  const banner = document.getElementById("stale-banner");
-  const expected = expectedTradingDate();
-  if (!latestDate || latestDate < expected) {
-    document.getElementById("stale-text").textContent =
-      `資料可能過期：目前最新為 ${latestDate || "無"}，預期應有 ${expected} 的收盤資料。` +
-      `若 ${expected} 是國定假日則忽略此提示；否則可能是電腦睡眠導致自動更新被跳過，點右邊按鈕手動補更新。`;
-    banner.style.display = "";
-  } else {
-    banner.style.display = "none";
+async function loadFreshness() {
+  try {
+    const s = await api("/api/admin/data-freshness");
+    renderFreshness(s);
+    return s;
+  } catch (err) {
+    document.getElementById("stale-text").textContent = "無法讀取資料狀態：" + err.message;
+    document.getElementById("stale-banner").style.display = "";
+    return null;
   }
 }
 
@@ -93,16 +135,20 @@ document.getElementById("btn-stale-update").addEventListener("click", async e =>
   try {
     await api("/api/admin/update-daily", { method: "POST", body: {} });
     toast("已更新今日行情");
-    loadDashboard(); loadStatus();
+    loadDashboard(); loadStatus(); loadFreshness();
   } catch (err) { toast("失敗：" + err.message); }
-  e.target.disabled = false; e.target.textContent = "立即更新今日行情";
+  e.target.disabled = false;
+  loadFreshness();
 });
+
+// 更新中或資料落後時較常輪詢，已同步時降頻——不用使用者緊盯畫面。
+setInterval(() => { if (!document.hidden) loadFreshness(); }, 20000);
 
 async function loadDashboard() {
   const d = await api("/api/market/dashboard");
   const L = d.latest;
-  checkStale(L ? L.date : null);
   if (L) {
+    document.getElementById("dashboard-asof").textContent = `${L.date} 收盤`;
     document.getElementById("taiex").textContent = fmt.num(L.taiex_close, 2);
     const chg = document.getElementById("taiex-chg");
     chg.textContent = `${fmt.sign(L.taiex_change)} (${fmt.signPct(L.taiex_change_pct)})`;
@@ -119,6 +165,7 @@ async function loadDashboard() {
         `外資 ${fmt.yi(f)}｜投信 ${fmt.yi(t)}｜自營 ${fmt.yi(dl)}`;
     }
   }
+  else document.getElementById("dashboard-asof").textContent = "尚無市場資料";
   if (d.breadth && d.breadth.total) {
     document.getElementById("breadth").innerHTML =
       `<span class="up">${d.breadth.up}</span> / <span class="down">${d.breadth.down}</span>`;
@@ -131,7 +178,7 @@ async function loadDashboard() {
       yAxis: { type: "value", scale: true, ...axisStyle() },
       series: [{ type: "line", data: d.history.map(r => r.taiex_close),
                  showSymbol: false, lineStyle: { color: CHART_THEME.ACCENT, width: 2 },
-                 areaStyle: { color: "rgba(79,142,247,.12)" } }],
+                 areaStyle: { color: CHART_THEME.ACCENT, opacity: .12 } }],
     }));
   } else {
     document.getElementById("taiex-chart").innerHTML =
@@ -171,7 +218,7 @@ function bindAdmin(id, path, body, confirmMsg) {
     try {
       const r = await api(path, { method: "POST", body: body || {} });
       toast(r.note || "完成：" + JSON.stringify(r).slice(0, 120));
-      loadStatus(); loadDashboard();
+      loadStatus(); loadDashboard(); loadFreshness();
     } catch (err) { toast("失敗：" + err.message); }
     btn.disabled = false;
   });
@@ -181,7 +228,7 @@ bindAdmin("btn-daily", "/api/admin/update-daily");
 bindAdmin("btn-backfill", "/api/admin/backfill", { days: 180 });
 bindAdmin("btn-revenue", "/api/admin/fetch-revenue", { months: 13 });
 
-loadDashboard(); loadWatchlist(); loadStatus();
+loadDashboard(); loadWatchlist(); loadStatus(); loadFreshness();
 </script>
 </body>
 </html>

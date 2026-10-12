@@ -1,12 +1,14 @@
 """煙霧測試：實際打各資料源，驗證欄位與入庫流程。
 
 執行：uv run python tests/smoke.py [step]
-step: sources / light / deep / finance / all（預設 all）
+step: sources / light / deep / finance / backtest / all（預設 all）
 
 注意：finance 是純數學驗證，不打任何外部 API，可以任意重跑；
 其餘三個會真的打資料源，請勿頻繁執行。
 """
 import sys
+import datetime as dt
+import math
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -253,6 +255,199 @@ def test_finance():
             f"{low['drift']}pp → {low['after_drift']}pp")
 
 
+def _ten_day_bars(dates):
+    a_close = [100, 101, 102, 103, 104, 105, 107, 108, 109, 110]
+    b_close = [50, 49, 48, 47, 46, 45, 44, 45, 45, 45]
+    a_open = [100, 100, 102, 103, 104, 105, 107, 108, 109, 110]
+    b_open = [50, 50, 48, 47, 46, 45, 44, 45, 45, 45]
+    rows = []
+    for i, date in enumerate(dates):
+        rows.extend([
+            {"stock_id": "A", "date": date, "open": a_open[i], "close": a_close[i]},
+            {"stock_id": "B", "date": date, "open": b_open[i], "close": b_close[i]},
+        ])
+    return rows
+
+
+def test_backtest():
+    """Stage B backtest core: deterministic synthetic data, no network/DB."""
+    from app.services.finance import etf_stats
+    from app.services.strategy import costs, metrics
+    from app.services.strategy.engine import run_backtest
+    from app.services.strategy.panel import synthetic_panel
+    from app.services.strategy.rules import static_signals
+    from app.services.strategy.types import (
+        BacktestConfig, CostConfig, ExecutionRule, MissingDataRule,
+        PositionSizingRule, RebalanceRule,
+    )
+
+    print("── Backtest Core：2 股票 × 10 交易日手算 ──")
+    dates = ["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07",
+             "2025-01-08", "2025-01-09", "2025-01-10", "2025-01-13",
+             "2025-01-14", "2025-01-15"]
+    panel = synthetic_panel(dates, _ten_day_bars(dates), publication_mode="strict")
+    config = BacktestConfig(
+        initial_cash=10_000,
+        execution=ExecutionRule(price="open", delay_sessions=1),
+        costs=CostConfig(commission_rate=.001, commission_discount=1,
+                         minimum_commission=0, sell_tax_rate=.002, slippage_bps=10),
+        sizing=PositionSizingRule(lot_size=1),
+        rebalance=RebalanceRule(frequency="daily"),
+    )
+    result = run_backtest(panel, static_signals({
+        dates[0]: {"A": .4, "B": .4}, dates[-2]: {},
+    }), config)
+    _assert("publication mode 保存於結果", result["metadata"]["publication_mode"] == "strict")
+    _assert("T 訊號最早於 T+1 成交", result["fills"][0]["date"] == dates[1],
+            f"signal={dates[0]} fill={result['fills'][0]['date']}")
+    _assert("2 買 + 2 賣", len(result["fills"]) == 4, str(result["fills"]))
+    _assert("A/B 手算股數", [(x["stock_id"], x["shares"]) for x in result["fills"][:2]] ==
+            [("A", 40), ("B", 80)])
+    # Gross: A +400, B -400 => 0. Net additionally pays 16 commission,
+    # 16 tax, and 16 slippage = 48.
+    _assert("手算 gross ending equity", result["equity_curve"][-1]["gross_equity"] == 10_000)
+    _assert("手算 net ending equity（成本 48）",
+            abs(result["equity_curve"][-1]["net_equity"] - 9_952) < 1e-8,
+            str(result["equity_curve"][-1]))
+    _assert("Gross / Net Return 分離",
+            round(result["metrics"]["gross_return"], 8) == 0 and
+            round(result["metrics"]["net_return"], 8) == -.48,
+            str({k: result['metrics'][k] for k in ('gross_return','net_return')}))
+    sample = costs.calculate("sell", 40, 110, config.costs)
+    _assert("成本拆解：commission / tax / slippage",
+            (sample.commission, sample.tax, round(sample.slippage, 6)) == (4, 9, 4.4),
+            str(sample))
+
+    print("\n── No Look-Ahead / publication mode ──")
+    publications = [
+        {"dataset": "month_revenue", "stock_id": "A", "publish_date": dates[1],
+         "publish_source": "actual", "period": "2024-12", "values": {"revenue": 100}},
+        {"dataset": "financials", "stock_id": "A", "publish_date": dates[1],
+         "publish_source": "assumed_deadline", "period": "2024Q4", "values": {"eps": 2}},
+    ]
+    observed = {}
+    pit = synthetic_panel(dates[:4], _ten_day_bars(dates)[:8],
+                          publications=publications, publication_mode="strict")
+    def inspect(context):
+        observed[context.date] = {
+            k: len(v.get("A", ())) for k, v in context.fundamentals.items()}
+        return None
+    run_backtest(pit, inspect, BacktestConfig(rebalance=RebalanceRule("daily")))
+    _assert("公布當日不可見", observed[dates[1]]["month_revenue"] == 0)
+    _assert("Actual 次一 panel day 可見", observed[dates[2]]["month_revenue"] == 1)
+    _assert("strict 排除 assumed_deadline", observed[dates[3]]["financials"] == 0)
+    assumed_seen = {}
+    assumed = synthetic_panel(dates[:4], _ten_day_bars(dates)[:8],
+                              publications=publications, publication_mode="assumed")
+    def inspect_assumed(context):
+        assumed_seen[context.date] = len(context.fundamentals["financials"].get("A", ()))
+        return None
+    run_backtest(assumed, inspect_assumed, BacktestConfig(rebalance=RebalanceRule("daily")))
+    _assert("assumed mode 允許 assumed_deadline",
+            assumed_seen[dates[2]] == 1)
+
+    print("\n── Missing Data / Rebalance ──")
+    missing_rows = _ten_day_bars(dates[:4])
+    # Remove A execution open on T+1; order must wait without looking forward.
+    for row in missing_rows:
+        if row["stock_id"] == "A" and row["date"] == dates[1]:
+            row["open"] = None
+    missing_panel = synthetic_panel(dates[:4], missing_rows)
+    delayed = run_backtest(missing_panel, static_signals({dates[0]: {"A": .5}}),
+                           BacktestConfig(initial_cash=10_000,
+                               costs=CostConfig(0, 0, 0, 0, 0),
+                               missing=MissingDataRule("next_available", "carry_forward", 5)))
+    _assert("缺成交價延至下一可用日", delayed["fills"][0]["date"] == dates[2])
+    rebalance = run_backtest(panel, static_signals({dates[0]: {"A": .5}, dates[4]: {"B": .5}}),
+                             BacktestConfig(initial_cash=10_000,
+                                 costs=CostConfig(0, 0, 0, 0, 0)))
+    switch_day = dates[5]
+    day_fills = [x for x in rebalance["fills"] if x["date"] == switch_day]
+    _assert("再平衡先賣 A、再買 B", [x["side"] for x in day_fills] == ["sell", "buy"],
+            str(day_fills))
+
+    print("\n── Zero / Single / Negative ──")
+    zero = run_backtest(panel, lambda _: None, BacktestConfig(initial_cash=10_000))
+    _assert("Zero Trade", zero["metrics"]["number_of_trades"] == 0 and not zero["fills"])
+    single = run_backtest(panel, static_signals({dates[0]: {"A": .5}, dates[-2]: {}}),
+                          BacktestConfig(initial_cash=10_000, costs=CostConfig(0, 0, 0, 0, 0)))
+    _assert("Single Trade", single["metrics"]["number_of_trades"] == 1)
+    negative = run_backtest(panel, static_signals({dates[0]: {"B": .5}, dates[-2]: {}}),
+                            BacktestConfig(initial_cash=10_000, costs=CostConfig(0, 0, 0, 0, 0)))
+    _assert("Negative Return", negative["metrics"]["net_return"] < 0 and
+            negative["metrics"]["average_loss"] > 0)
+
+    print("\n── Delisting / Corporate Action contract ──")
+    edge_dates = dates[:6]
+    edge_bars = [{"stock_id": "A", "date": d, "open": 100, "close": 100}
+                 for d in edge_dates[:-1]]  # no quote on delisting date
+    edge = synthetic_panel(
+        edge_dates, edge_bars,
+        securities=[{"stock_id": "A", "delisted_date": edge_dates[-1]}],
+        actions=[
+            {"stock_id": "A", "date": edge_dates[2], "kind": "dividend_cash",
+             "cash_dividend": 2, "ratio": .98},
+            {"stock_id": "A", "date": edge_dates[3], "kind": "split",
+             "ratio": .5},
+        ])
+    edge_result = run_backtest(edge, static_signals({edge_dates[0]: {"A": .5}}),
+                               BacktestConfig(initial_cash=10_000,
+                                   costs=CostConfig(0, 0, 0, 0, 0)))
+    _assert("現金股利依明示欄位入帳", edge_result["equity_curve"][2]["net_equity"] == 10_100)
+    _assert("ratio 不被猜成股數倍率", any("ratio was not interpreted" in w
+                                             for w in edge_result["warnings"]))
+    _assert("下市以最後有效收盤強制出場",
+            edge_result["closed_trades"][-1]["exit_reason"] == "delisted" and
+            not edge_result["open_positions"])
+    multiplier = synthetic_panel(
+        edge_dates[:4], [{"stock_id": "A", "date": d, "open": 100,
+                          "close": 50 if i >= 2 else 100}
+                         for i, d in enumerate(edge_dates[:4])],
+        actions=[{"stock_id": "A", "date": edge_dates[2], "kind": "split",
+                  "share_multiplier": 2, "ratio": .5}])
+    mult_result = run_backtest(multiplier, static_signals({edge_dates[0]: {"A": .5}}),
+                               BacktestConfig(initial_cash=10_000,
+                                   costs=CostConfig(0, 0, 0, 0, 0)))
+    _assert("只有 explicit share_multiplier 才調整股數",
+            mult_result["open_positions"]["A"] == 100 and
+            mult_result["equity_curve"][-1]["net_equity"] == 10_000)
+
+    print("\n── Metrics 與 etf_stats.compute 交叉驗證 ──")
+    long_prices, long_curve = [], []
+    start = dt.date(2024, 1, 1)
+    for i in range(400):
+        date = (start + dt.timedelta(days=i)).isoformat()
+        value = 100 * (1.0003 ** i) * (1 + .02 * math.sin(i / 15))
+        long_prices.append({"date": date, "close": value})
+        long_curve.append({"date": date, "net_equity": value,
+                           "gross_equity": value, "benchmark": value})
+    legacy = etf_stats.compute(long_prices, [])
+    current = metrics.compute(long_curve)
+    _assert("CAGR 一致", round(current["cagr"], 2) == legacy["cagr_total"],
+            f"{current['cagr']} vs {legacy['cagr_total']}")
+    _assert("Volatility 一致", round(current["annualized_volatility"], 1) == legacy["volatility"],
+            f"{current['annualized_volatility']} vs {legacy['volatility']}")
+    _assert("MDD 一致", round(current["max_drawdown"], 1) == legacy["max_drawdown"],
+            f"{current['max_drawdown']} vs {legacy['max_drawdown']}")
+    _assert("Benchmark 對齊：同序列 Beta=1 / Alpha=0",
+            abs(current["beta"] - 1) < 1e-10 and abs(current["alpha"]) < 1e-10,
+            f"beta={current['beta']} alpha={current['alpha']}")
+    semantic = metrics.trade_statistics([
+        {"net_pnl": 100}, {"net_pnl": 50}, {"net_pnl": -25},
+        {"net_pnl": -75}, {"net_pnl": 0},
+    ])
+    _assert("Payoff Ratio 與標準 Profit Factor 語意分離",
+            abs(semantic["payoff_ratio"] - 2.25) < 1e-12 and
+            abs(semantic["profit_factor"] - 1.5) < 1e-12,
+            str({k: semantic[k] for k in ("payoff_ratio", "profit_factor")}))
+    required = {"total_return", "cagr", "annualized_volatility", "sharpe", "sortino",
+                "max_drawdown", "calmar", "beta", "alpha", "win_rate",
+                "payoff_ratio", "profit_factor", "average_win", "average_loss", "expectancy",
+                "average_holding_period", "turnover", "number_of_trades",
+                "recovery_time", "gross_return", "net_return"}
+    _assert("Stage B metrics 欄位完整", required <= current.keys(), str(required - current.keys()))
+
+
 if __name__ == "__main__":
     step = sys.argv[1] if len(sys.argv) > 1 else "all"
     if step in ("sources", "all"):
@@ -263,4 +458,6 @@ if __name__ == "__main__":
         test_deep()
     if step in ("finance", "all"):
         test_finance()
+    if step in ("backtest", "all"):
+        test_backtest()
     print("\n全部通過 ✓")

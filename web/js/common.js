@@ -1,25 +1,31 @@
 /* 共用：導覽列、API 封裝、格式化、圖表主題 */
 
-const NAV = [
-  ["index.html", "儀表板"],
-  ["screener.html", "篩選器"],
-  ["watchlist.html", "觀察名單"],
-  ["journal.html", "交易日誌"],
-  ["finance.html", "財務規劃"],
+const NAV_GROUPS = [
+  ["市場研究", [["index.html", "儀表板"], ["screener.html", "篩選器"],
+    ["watchlist.html", "觀察名單"]]],
+  ["策略研究", [["strategy.html", "策略實驗室"], ["strategy.html?optimization=home", "參數穩健性"],
+    ["strategy.html?walkforward=home", "樣本外驗證"], ["portfolio.html", "策略投資組合"]]],
+  ["個人決策", [["journal.html", "交易日誌"], ["finance.html", "財務規劃"]]],
 ];
 
 function renderNav() {
   const here = location.pathname.split("/").pop() || "index.html";
+  const stage = here === "strategy.html" ? (qs("optimization") ? "參數穩健性" : qs("walkforward") ? "樣本外驗證" : "策略實驗室") : "";
+  const current = here === "stock.html" ? "個股研究" :
+    NAV_GROUPS.flatMap(group => group[1]).find(([href, label]) => href.split("?")[0] === here && (!stage || label === stage))?.[1] || "儀表板";
+  const groupName = here === "stock.html" ? "市場研究" : NAV_GROUPS.find(([, links]) => links.some(([, label]) => label === current))?.[0] || "市場研究";
   const nav = document.createElement("nav");
   nav.className = "topbar";
+  nav.setAttribute("aria-label", "全站導覽");
   nav.innerHTML = `
-    <span class="brand">台股分析</span>
-    ${NAV.map(([href, label]) =>
-      `<a class="navlink ${here === href ? "active" : ""}" href="${href}">${label}</a>`
-    ).join("")}
+    <a class="brand" href="index.html">台股分析<span>研究卷宗</span></a>
+    <span class="nav-current" aria-current="page">${groupName}<span aria-hidden="true"> / </span><strong>${current}</strong></span>
+    <div class="nav-groups">${NAV_GROUPS.map(([name, links]) =>
+      `<details class="nav-group"><summary>${name}</summary><div class="nav-items">${links.map(([href, label]) =>
+        `<a class="navlink ${current === label ? "active" : ""}" ${current === label ? 'aria-current="page"' : ""} href="${href}">${label}</a>`).join("")}${name === "市場研究" && here === "stock.html" ? `<span class="navlink active" aria-current="page">個股研究</span>` : ""}</div></details>`).join("")}</div>
     <div class="searchbox">
-      <input id="global-search" placeholder="輸入代號或名稱（如 2330）" autocomplete="off">
-      <div class="search-results" id="search-results"></div>
+      <label class="sr-only" for="global-search">搜尋股票代號或名稱</label><input id="global-search" placeholder="搜尋股票，如 2330" autocomplete="off" aria-controls="search-results">
+      <div class="search-results" id="search-results" role="listbox"></div>
     </div>`;
   document.body.prepend(nav);
 
@@ -31,12 +37,14 @@ function renderNav() {
     const q = input.value.trim();
     if (!q) { box.style.display = "none"; return; }
     timer = setTimeout(async () => {
-      const rows = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
-      box.innerHTML = rows.map(r =>
-        `<div onclick="location.href='stock.html?id=${r.stock_id}'">
-           <span class="sid">${r.stock_id}</span><span>${r.name}</span>
-           <span class="mkt">${r.market === "twse" ? "上市" : "上櫃"}·${r.industry || ""}</span>
-         </div>`).join("") || `<div class="muted">查無結果</div>`;
+      try {
+        const rows = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
+        box.innerHTML = rows.map(r =>
+          `<a role="option" href="stock.html?id=${encodeURIComponent(r.stock_id)}">
+             <span class="sid">${r.stock_id}</span><span>${r.name}</span>
+             <span class="mkt">${r.market === "twse" ? "上市" : "上櫃"}·${r.industry || ""}</span>
+           </a>`).join("") || `<div class="muted">查無結果</div>`;
+      } catch { box.innerHTML = `<div class="muted">搜尋暫時無法使用，請稍後重試。</div>`; }
       box.style.display = "block";
     }, 250);
   });
@@ -44,9 +52,16 @@ function renderNav() {
     if (!nav.querySelector(".searchbox").contains(e.target)) box.style.display = "none";
   });
   input.addEventListener("keydown", e => {
+    if (e.key === "Escape") box.style.display = "none";
     if (e.key === "Enter" && /^\d{4,6}$/.test(input.value.trim()))
       location.href = `stock.html?id=${input.value.trim()}`;
   });
+  const mobile = matchMedia("(max-width: 760px)");
+  const syncGroups = () => { nav.querySelectorAll(".nav-group").forEach(d => { d.open = false; }); };
+  mobile.addEventListener("change", syncGroups); syncGroups();
+  nav.querySelectorAll(".nav-group").forEach(group => group.addEventListener("toggle", () => {
+    if (group.open) nav.querySelectorAll(".nav-group").forEach(other => { if (other !== group) other.open = false; });
+  }));
 }
 
 async function api(path, opts = {}) {
@@ -69,6 +84,14 @@ function toast(msg, ms = 2600) {
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), ms);
+}
+
+/* Shared result identity strip: provenance stays visible before any metric. */
+function researchMetadata(items) {
+  const escape = value => String(value ?? "—").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return `<dl class="research-metadata">${items.map(([name, value]) =>
+    `<div><dt>${escape(name)}</dt><dd>${escape(value)}</dd></div>`).join("")}</dl>`;
 }
 
 /* 格式化 */
@@ -95,12 +118,19 @@ const fmt = {
   },
 };
 
-/* ECharts 暗色主題共用 */
+/* ECharts 共用主題：顏色只讀 CSS token，避免圖表另有一份品牌色票。 */
+function cssVar(name, fallback = "") {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
 const CHART_THEME = {
   backgroundColor: "transparent",
-  textStyle: { color: "#8b93a3" },
+  textStyle: { color: cssVar("--muted", "#5b5e66") },
   grid: { left: 56, right: 20, top: 30, bottom: 28 },
-  UP: "#f0524f", DOWN: "#3fb26f", ACCENT: "#4f8ef7", WARN: "#e8a33d",
+  UP: cssVar("--up", "#a63732"), DOWN: cssVar("--down", "#247048"),
+  ACCENT: cssVar("--accent", "#555d7a"), WARN: cssVar("--warn", "#835516"),
+  MUTED: cssVar("--muted", "#5b5e66"), TEXT: cssVar("--text", "#2b2d31"),
+  PANEL2: cssVar("--panel2", "#e9ecee"), BORDER: cssVar("--border", "#cdd2d4"),
 };
 
 function makeChart(id) {
@@ -113,9 +143,10 @@ function makeChart(id) {
 function baseOption(extra = {}) {
   return {
     backgroundColor: "transparent",
-    textStyle: { color: "#8b93a3" },
-    tooltip: { trigger: "axis", backgroundColor: "#1e222b", borderColor: "#2a2f3a",
-               textStyle: { color: "#e6e9ef", fontSize: 12 } },
+    textStyle: { color: CHART_THEME.MUTED },
+    tooltip: { trigger: "axis", backgroundColor: CHART_THEME.PANEL2,
+               borderColor: CHART_THEME.BORDER,
+               textStyle: { color: CHART_THEME.TEXT, fontSize: 12 } },
     grid: { left: 60, right: 24, top: 34, bottom: 30 },
     ...extra,
   };
@@ -123,9 +154,9 @@ function baseOption(extra = {}) {
 
 function axisStyle() {
   return {
-    axisLine: { lineStyle: { color: "#2a2f3a" } },
-    axisLabel: { color: "#8b93a3" },
-    splitLine: { lineStyle: { color: "#20242d" } },
+    axisLine: { lineStyle: { color: CHART_THEME.BORDER } },
+    axisLabel: { color: CHART_THEME.MUTED },
+    splitLine: { lineStyle: { color: CHART_THEME.BORDER, opacity: .6 } },
   };
 }
 

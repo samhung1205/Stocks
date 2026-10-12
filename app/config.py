@@ -32,6 +32,22 @@ DEEP_RETENTION_DAYS = 90
 
 ENABLE_SCHEDULER = os.environ.get("ENABLE_SCHEDULER", "1") == "1"
 
+# Stage L1：每日資料自動補齊（daily/EOD light layer only，不是盤中即時報價）
+AUTO_REFRESH_ENABLED = os.environ.get("AUTO_REFRESH_ENABLED", "1") == "1"
+AUTO_REFRESH_TIMEZONE = os.environ.get("AUTO_REFRESH_TIMEZONE", "Asia/Taipei")
+# 盤後檢查時間（HH:MM）：保守 default，repo 內沒有官方「資料何時就緒」的可靠來源，
+# 沿用現有排程原本的 15:05（見 scheduler.py 舊註解：收盤後資料多在 14:30-15:00 就緒）。
+AUTO_REFRESH_CHECK_TIME = os.environ.get("AUTO_REFRESH_CHECK_TIME", "15:05")
+# 檢查時間之後，多久 poll 一次（分鐘）
+AUTO_REFRESH_POLL_INTERVAL_MINUTES = int(os.environ.get("AUTO_REFRESH_POLL_INTERVAL_MINUTES", "15"))
+# 單一交易日最多重試幾次、超過這個時間窗（分鐘，從第一次失敗/部分算起）就停止重試
+AUTO_REFRESH_MAX_RETRIES = int(os.environ.get("AUTO_REFRESH_MAX_RETRIES", "6"))
+AUTO_REFRESH_RETRY_WINDOW_MINUTES = int(os.environ.get("AUTO_REFRESH_RETRY_WINDOW_MINUTES", "180"))
+# Stage L1.1：GET /api/admin/data-freshness 讀取端點快取「官方最新交易日」查詢結果的秒數，
+# 避免 dashboard 每 20 秒 poll 就打一次 TWSE；實際補資料的 attempt（scheduler/startup/manual）
+# 一律重新查詢，不受這個快取影響。
+AUTO_REFRESH_STATUS_CACHE_SECONDS = int(os.environ.get("AUTO_REFRESH_STATUS_CACHE_SECONDS", "60"))
+
 # 交易成本預設：手續費 0.1425%（打折自行調整）、賣出證交稅 0.3%（ETF 0.1%）
 FEE_RATE = float(os.environ.get("FEE_RATE", "0.001425"))
 FEE_DISCOUNT = float(os.environ.get("FEE_DISCOUNT", "0.6"))
@@ -54,3 +70,14 @@ def load_dotenv() -> None:
 load_dotenv()
 FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", FINMIND_TOKEN)
 FUGLE_API_KEY = os.environ.get("FUGLE_API_KEY", FUGLE_API_KEY)
+
+# Railway is always private. A missing credential never opens the app publicly.
+REQUIRE_AUTH = bool(os.environ.get("RAILWAY_ENVIRONMENT_ID")) or os.environ.get("STOCKS_REQUIRE_AUTH", "0") == "1"
+AUTH_USERNAME = os.environ.get("STOCKS_AUTH_USERNAME", "")
+AUTH_PASSWORD = os.environ.get("STOCKS_AUTH_PASSWORD", "")
+REQUIRE_EXISTING_DB = bool(os.environ.get("RAILWAY_ENVIRONMENT_ID")) or os.environ.get("STOCKS_REQUIRE_EXISTING_DB", "0") == "1"
+
+# Data-foundation defaults; API/CLI may override liquidity threshold per job.
+BACKFILL_MIN_AVG_AMOUNT = float(os.environ.get("STOCKS_MIN_AVG_AMOUNT", "30000000"))
+# 600/hour token plan; leave headroom. No-token limit may require slower pacing.
+POLITE_INTERVAL["api.finmindtrade.com"] = float(os.environ.get("FINMIND_INTERVAL", "6.2"))

@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>觀察名單 — 台股分析</title>
 <link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
-<main>
-  <div class="flex">
-    <h1>觀察名單</h1>
-    <span class="spacer"></span>
-    <button id="btn-rt" class="ghost">更新盤中報價</button>
-    <span class="muted" id="rt-info"></span>
-  </div>
+<main class="watchlist-main">
+  <header class="desk-page-head">
+    <div><div class="desk-kicker">市場研究 / 觀察卷宗</div><h1>觀察名單</h1><p class="muted">依決策狀態整理研究標的；盤中報價僅作當下參考。</p></div>
+    <div class="head-actions"><button id="btn-rt" class="ghost" type="button">更新盤中報價</button><span class="muted" id="rt-info" aria-live="polite"></span></div>
+  </header>
 
+  <div id="watch-summary" class="watch-summary" aria-label="觀察名單摘要"></div>
   <div id="tiers"></div>
 </main>
 
@@ -24,24 +24,36 @@ const TIERS = [["holding", "持有中"], ["waiting", "等買點"], ["research", 
 let allRows = [];
 
 async function load() {
-  allRows = await api("/api/watchlist");
+  try { allRows = await api("/api/watchlist"); }
+  catch (err) {
+    document.getElementById("watch-summary").hidden = true;
+    document.getElementById("tiers").innerHTML = `<section class="card state-card" role="alert"><h2>觀察名單無法載入</h2><p>${String(err.message || err)}</p><button type="button" onclick="load()">重新載入</button></section>`;
+    return;
+  }
   const wrap = document.getElementById("tiers");
   wrap.innerHTML = "";
+  const summary = document.getElementById("watch-summary");
+  summary.hidden = false;
+  summary.innerHTML = TIERS.map(([tier, label]) => `<div><span>${label}</span><strong>${allRows.filter(r => r.tier === tier).length}</strong></div>`).join("");
+  if (!allRows.length) {
+    wrap.innerHTML = '<section class="card empty-state"><h2>觀察名單尚未收錄標的</h2><p>先從全市場篩選器建立研究候選，再依決策狀態移動。</p><a class="btn" href="screener.html">前往全市場篩選器</a></section>';
+    return;
+  }
   for (const [tier, label] of TIERS) {
     const rows = allRows.filter(r => r.tier === tier);
     const card = document.createElement("div");
-    card.className = "card mt";
+    card.className = "card watch-tier";
     card.innerHTML = `
-      <h2>${label}（${rows.length}）</h2>
-      <div class="scroll-x"><table class="data">
+      <div class="watch-tier-head"><h2>${label}</h2><span class="muted">${rows.length} 檔</span></div>
+      ${rows.length ? `<div class="scroll-x"><table class="data">
         <thead><tr>
           <th class="l">股票</th><th class="l">產業</th><th>收盤</th><th>漲跌</th>
           <th class="rt-col">盤中價</th><th>PE</th><th>殖利率</th><th>警訊</th>
           <th class="l">備註</th><th></th>
         </tr></thead>
-        <tbody>${rows.length ? rows.map(r => `
+        <tbody>${rows.map(r => `
           <tr data-sid="${r.stock_id}">
-            <td class="l"><a href="stock.html?id=${r.stock_id}">${r.stock_id} ${r.name}</a></td>
+            <td class="l"><a href="stock.html?id=${r.stock_id}&from=watchlist">${r.stock_id} ${r.name}</a></td>
             <td class="l muted">${r.industry || "—"}</td>
             <td>${fmt.num(r.close)}</td>
             <td class="${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
@@ -54,14 +66,13 @@ async function load() {
             <td class="l note-cell" style="max-width:220px;white-space:normal">
               <span class="muted">${r.note || ""}</span></td>
             <td>
-              <select class="small tier-sel" style="width:96px">
+              <select class="small tier-sel" style="width:96px" aria-label="${r.stock_id} ${r.name} 觀察分級">
                 ${TIERS.map(([t, l]) => `<option value="${t}" ${t === r.tier ? "selected" : ""}>${l}</option>`).join("")}
               </select>
               <button class="ghost small btn-del">移除</button>
             </td>
-          </tr>`).join("")
-          : '<tr><td colspan="10" class="muted l">此分級沒有個股。</td></tr>'}
-        </tbody></table></div>`;
+          </tr>`).join("")}
+        </tbody></table></div>` : `<div class="watch-tier-empty"><p>此階段目前沒有標的。</p><a href="screener.html">尋找研究候選 →</a></div>`}`;
     wrap.appendChild(card);
   }
 

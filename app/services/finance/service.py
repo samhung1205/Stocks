@@ -15,10 +15,13 @@ from sqlalchemy import insert
 from app.db import engine, query_all, query_one, upsert_many
 from app.db.tables import finance_profiles, finance_targets
 from app.services.finance import (
-    allocation, compound, etf_stats, health, rebalance, retirement, risk, universe,
+    allocation, compound, etf_stats, health, portfolio_source, rebalance, retirement, risk, universe,
 )
 
 JSON_FIELDS = ("risk_answers", "assumptions", "retirement")
+TARGET_JSON_FIELDS = ("assumption_evidence_ref",)
+KNOWN_ASSUMPTION_SOURCES = ("manual", "scenario", "research_informed")
+PIN_FIELDS = ("strategy_portfolio_id", "portfolio_version_id", "research_run_id")
 
 DEFAULT_ASSUMPTIONS = {
     "initial_capital": None,        # None → 用現有投資資產合計
@@ -97,12 +100,98 @@ def get_profile(profile_id: int) -> dict | None:
         if not row:
             return None
         targets = query_all(conn, """SELECT stock_id, weight, expected_return,
-                                            actual_value, enabled
+                                            actual_value, enabled, source_type,
+                                            strategy_portfolio_id, portfolio_version_id,
+                                            research_run_id, assumption_source,
+                                            assumption_evidence_ref
                                      FROM finance_targets WHERE profile_id=:i""",
                             i=profile_id)
+    for tgt in targets:
+        for f in TARGET_JSON_FIELDS:
+            tgt[f] = _loads(tgt.get(f), None)
     p = _hydrate(row)
     p["targets"] = targets or default_profile()["targets"]
     return p
+
+
+def _prepare_target(t: dict) -> dict:
+    """驗證＋正規化一筆 target payload，回傳可直接寫入 finance_targets 的 row
+    （不含 profile_id）。純驗證/唯讀查詢，不寫 DB——真正的寫入在 save_profile()
+    自己的 transaction 裡一次做完。
+
+    Stage I1 的三個 source_type：
+      NULL/'etf'              現況行為，完全不變。
+      'manual'                stock_id 是使用者自訂字串；expected_return 不套用
+                               任何 role 預設，reporting 分類也不套用 core_tw/TW
+                               equity（見 allocation.allocate 的 source_types 與
+                               universe.meta 的 source_type 參數，Stage I1.1），
+                               且 pin 欄位一律不得出現。
+      'strategy_portfolio'    stock_id 由伺服器端依 universe.portfolio_key() 衍生，
+                               不信任呼叫端自己組字串；strategy_portfolio_id +
+                               portfolio_version_id 必須通過 portfolio_source
+                               .validate_pin()（version 屬於該 portfolio、
+                               research_run 若給了屬於同一個 version）。
+    """
+    source_type = t.get("source_type") or None   # 保留 None（legacy），不要在這裡預設成 "etf"
+
+    if source_type == "strategy_portfolio":
+        sp_id = t.get("strategy_portfolio_id")
+        version_id = t.get("portfolio_version_id")
+        run_id = t.get("research_run_id") or None
+        if not isinstance(sp_id, int) or isinstance(sp_id, bool):
+            raise ValueError("strategy_portfolio target requires an integer strategy_portfolio_id")
+        if not isinstance(version_id, int) or isinstance(version_id, bool):
+            raise ValueError("strategy_portfolio target requires an integer portfolio_version_id")
+        portfolio_source.validate_pin(sp_id, version_id, run_id)
+        stock_id = universe.portfolio_key(sp_id)
+    else:
+        stock_id = t.get("stock_id")
+        if not stock_id:
+            raise ValueError("target requires a stock_id")
+        if universe.is_portfolio_key(stock_id):
+            raise ValueError(f"stock_id {stock_id!r} is reserved for strategy_portfolio sources "
+                             f"(source_type must be 'strategy_portfolio')")
+        sp_id = version_id = run_id = None
+        for f in PIN_FIELDS:
+            if t.get(f) is not None:
+                raise ValueError(f"{f} is only valid when source_type='strategy_portfolio'")
+
+    assumption_source = t.get("assumption_source") or None
+    expected_return = t.get("expected_return")
+    evidence_ref = None
+    if assumption_source == "research_informed":
+        if source_type != "strategy_portfolio":
+            raise ValueError("assumption_source='research_informed' requires source_type='strategy_portfolio'")
+        if expected_return in (None, ""):
+            raise ValueError("assumption_source='research_informed' requires an explicit expected_return "
+                             "(it is never auto-filled from portfolio evidence)")
+        if not run_id:
+            raise ValueError("assumption_source='research_informed' requires a research_run_id with "
+                             "available research evidence")
+        ev = portfolio_source.evidence(sp_id, version_id, run_id)
+        if not ev["research"]["available"]:
+            raise ValueError("assumption_source='research_informed' requires available research evidence "
+                             f"for the pinned research_run_id (reason: {ev['research']['reason']})")
+        # Audit snapshot ONLY -- computed server-side from what evidence() just returned, never
+        # from client-supplied numbers. Crucially: `expected_return` above still comes solely
+        # from the payload the caller sent; it is NEVER overwritten with snapshot_cagr here.
+        evidence_ref = {
+            "portfolio_version_id": version_id, "research_run_id": run_id,
+            "snapshot_cagr": ev["research"]["metrics"].get("cagr"),
+            "snapshot_asof": dt.datetime.now().isoformat(timespec="seconds"),
+        }
+    elif assumption_source is not None and assumption_source not in KNOWN_ASSUMPTION_SOURCES:
+        raise ValueError(f"unknown assumption_source: {assumption_source!r}")
+
+    return {
+        "stock_id": stock_id,
+        "weight": t.get("weight"), "expected_return": expected_return,
+        "actual_value": t.get("actual_value"), "enabled": 1 if t.get("enabled", 1) else 0,
+        "source_type": source_type, "strategy_portfolio_id": sp_id,
+        "portfolio_version_id": version_id, "research_run_id": run_id,
+        "assumption_source": assumption_source,
+        "assumption_evidence_ref": json.dumps(evidence_ref, ensure_ascii=False) if evidence_ref else None,
+    }
 
 
 def save_profile(payload: dict) -> dict:
@@ -118,6 +207,12 @@ def save_profile(payload: dict) -> dict:
     # 風險型態存的是問卷算出來的自動值；人工覆寫另存 risk_type_manual
     row["risk_type"] = risk.score(payload.get("risk_answers"))["type"]
 
+    # 驗證/唯讀查詢（可能打 DB 讀 Strategy Portfolio 的版本/研究結果）全部在開交易之前
+    # 做完，profile 的寫入 transaction 只做單純的 INSERT/UPSERT，兩者不交疊。
+    targets_in = [t for t in payload.get("targets", [])
+                  if t.get("stock_id") or t.get("source_type") == "strategy_portfolio"]
+    prepared_targets = [_prepare_target(t) for t in targets_in]
+
     pid = payload.get("id")
     with engine.begin() as conn:
         if pid:
@@ -127,12 +222,7 @@ def save_profile(payload: dict) -> dict:
             row["created_at"] = now
             pid = conn.execute(insert(finance_profiles).values(**row)).inserted_primary_key[0]
         conn.exec_driver_sql("DELETE FROM finance_targets WHERE profile_id=?", (pid,))
-        targets = [{
-            "profile_id": pid, "stock_id": t["stock_id"],
-            "weight": t.get("weight"), "expected_return": t.get("expected_return"),
-            "actual_value": t.get("actual_value"),
-            "enabled": 1 if t.get("enabled", 1) else 0,
-        } for t in payload.get("targets", []) if t.get("stock_id")]
+        targets = [{"profile_id": pid, **pt} for pt in prepared_targets]
         upsert_many(conn, finance_targets, targets)
     return get_profile(pid)
 
@@ -147,7 +237,9 @@ def delete_profile(profile_id: int) -> dict:
 
 # ── ETF 名單 ────────────────────────────────────────────
 def _names(stock_ids: list[str]) -> dict[str, str]:
-    ids = [s for s in stock_ids if s != "CASH"]
+    # Stage I1: "portfolio:<id>" is an opaque Strategy Portfolio key, never a real
+    # stock_id -- looking it up against `stocks` would just waste a query and never match.
+    ids = [s for s in stock_ids if s != "CASH" and not universe.is_portfolio_key(s)]
     if not ids:
         return {}
     ph = ",".join(f":i{n}" for n in range(len(ids)))
@@ -195,18 +287,39 @@ def refresh_etf_history(stock_ids: list[str] | None = None) -> dict:
 
 
 # ── 試算組裝 ────────────────────────────────────────────
+def _target_key(t: dict) -> str | None:
+    """一筆 target 在 allocation 引擎裡用的 key。
+
+    strategy_portfolio 來源的 stock_id 可能還沒被 save_profile() 正規化過（simulate()
+    是無狀態試算，前端可能送一份「還沒存檔」的草稿），所以這裡容忍 stock_id 缺席、
+    只要 strategy_portfolio_id 在就能算出同一把 opaque key；反過來已經存檔、
+    stock_id 已經是 "portfolio:<id>" 的情況也照樣成立。**刻意不在這裡驗證 pin
+    是否吻合**（那是 save_profile() 寫入時才做的事）——simulate() 對任何輸入都
+    必須算得出東西，不能因為使用者還在選版本／研究結果就整個試算失敗。
+    """
+    if t.get("source_type") == "strategy_portfolio" and t.get("strategy_portfolio_id") is not None:
+        return universe.portfolio_key(t["strategy_portfolio_id"])
+    return t.get("stock_id")
+
+
 def _portfolio_actuals(stock_ids: list[str]) -> dict[str, float]:
     """從交易日誌帶入目前持倉市值（spec §24 的「目前實際配置」）。
 
-    只帶股票代號；CASH 不自動帶，避免和緊急預備金重複計算。
+    只帶股票代號；CASH 不自動帶，避免和緊急預備金重複計算。Stage I1：一個
+    Strategy Portfolio 的研究回測結果從來不是交易日誌裡的真實持倉，這裡永遠不該、
+    也不會為它帶出任何市值——``portfolio:<id>`` 這種 opaque key 在函式自己內部就
+    被濾掉，不依賴呼叫端記得先濾過一次。
     """
+    ids = [s for s in stock_ids if not universe.is_portfolio_key(s)]
+    if not ids:
+        return {}
     from app.services import journal
     try:
         pos = journal.positions()
     except Exception:
         return {}
     return {p["stock_id"]: p["market_value"] for p in pos
-            if p["stock_id"] in stock_ids and p.get("market_value")}
+            if p["stock_id"] in ids and p.get("market_value")}
 
 
 def simulate(payload: dict) -> dict:
@@ -234,23 +347,33 @@ def simulate(payload: dict) -> dict:
         emergency_level=h["emergency_level"],
         horizon_years=horizon)
 
-    targets_in = [t for t in (profile.get("targets") or []) if t.get("stock_id")]
-    selected = [t["stock_id"] for t in targets_in if t.get("enabled", 1)]
-    override = ({t["stock_id"]: t.get("weight") for t in targets_in}
+    targets_in = [t for t in (profile.get("targets") or []) if _target_key(t)]
+    selected = [_target_key(t) for t in targets_in if t.get("enabled", 1)]
+    override = ({_target_key(t): t.get("weight") for t in targets_in}
                 if a.get("custom_weights") else None)
-    returns = {t["stock_id"]: t.get("expected_return") for t in targets_in
+    returns = {_target_key(t): t.get("expected_return") for t in targets_in
                if t.get("expected_return") not in (None, "")}
+    # Stage I1.1：{key: source_type} 全量傳給 allocate()——只有 "manual" 對它有特殊意義
+    # （角色/資產/地區改用 universe.py 的 `manual` 分類，不再誤套 core_tw / TW equity），
+    # 其他值（或缺席）走既有 fallback，語意不變。
+    source_types = {_target_key(t): t.get("source_type") for t in targets_in}
 
     alloc = allocation.allocate(selected, roles["weights"],
                                 initial_capital=0, monthly=0,
-                                override=override, returns=returns)
+                                override=override, returns=returns,
+                                source_types=source_types)
 
     # 4. 試算假設：初始本金、三情境報酬、費用、配息率
     initial = a.get("initial_capital")
     initial = float(initial) if initial not in (None, "") else float(h["invested_assets"])
 
-    base = alloc["expected_return"] if a.get("use_portfolio_return") else float(a["return_base"])
-    if a.get("use_portfolio_return"):
+    # alloc["expected_return"] 可能是 None（所有標的都還沒設定假設報酬，見 §5/§6 的
+    # no-silent-fallback 契約）——這種情況下退回 Planner 自己既有的 return_base 常數，
+    # 這不是「用研究結果」，是 use_portfolio_return 這個既有手動假設欄位本來就有的
+    # 預設值（DEFAULT_ASSUMPTIONS["return_base"]），跟任何 Strategy Portfolio 證據無關。
+    use_portfolio_return = a.get("use_portfolio_return") and alloc["expected_return"] is not None
+    base = alloc["expected_return"] if use_portfolio_return else float(a["return_base"])
+    if use_portfolio_return:
         rates = {"conservative": round(base - 3, 2), "base": round(base, 2),
                  "optimistic": round(base + 3, 2)}
     else:
@@ -261,7 +384,7 @@ def simulate(payload: dict) -> dict:
     advanced = a.get("fee_mode") == "advanced"
     fee = (alloc["expected_fee"] + float(a.get("extra_fee") or 0)) if advanced else 0.0
     denom = alloc["weight_sum"] or 100.0
-    port_yield = sum(t["weight"] * universe.default_yield(t["stock_id"])
+    port_yield = sum(t["weight"] * universe.default_yield(t["stock_id"], source_types.get(t["stock_id"]))
                      for t in alloc["targets"]) / denom
     reinvest = bool(a.get("dividend_reinvest", True))
     inflation = float(a.get("inflation", 2.0))
@@ -269,9 +392,14 @@ def simulate(payload: dict) -> dict:
     # 5. 重新用實際金額算一次配置（金額欄位需要 initial / monthly）
     alloc = allocation.allocate(selected, roles["weights"],
                                 initial_capital=initial, monthly=monthly,
-                                override=override, returns=returns)
+                                override=override, returns=returns,
+                                source_types=source_types)
     names = _names(selected)
     for t in alloc["targets"]:
+        if universe.is_portfolio_key(t["stock_id"]):
+            sp_id = int(t["stock_id"][len(universe.PORTFOLIO_KEY_PREFIX):])
+            t["name"] = portfolio_source.display_name(sp_id) or t["stock_id"]
+            continue
         t["name"] = (universe.UNIVERSE.get(t["stock_id"], {}).get("name")
                      or names.get(t["stock_id"]) or t["stock_id"])
 
@@ -312,8 +440,10 @@ def simulate(payload: dict) -> dict:
     ret["projection_to_retire"] = to_retire
 
     # 8. 再平衡：目前實際配置由交易日誌帶入，使用者填的值優先
-    actuals = _portfolio_actuals(selected)
-    user_actual = {t["stock_id"]: t.get("actual_value") for t in targets_in}
+    # Strategy Portfolio 從不從交易日誌帶入市值（它從來不是真實持倉，見
+    # _portfolio_actuals 的 docstring）——先濾掉 opaque key 再查 journal。
+    actuals = _portfolio_actuals([s for s in selected if not universe.is_portfolio_key(s)])
+    user_actual = {_target_key(t): t.get("actual_value") for t in targets_in}
     rb_rows = []
     for t in alloc["targets"]:
         sid = t["stock_id"]

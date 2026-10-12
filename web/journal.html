@@ -5,21 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>交易日誌 — 台股分析</title>
 <link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
-<main>
-  <h1>交易日誌</h1>
+<main class="journal-main">
+  <header class="desk-page-head"><div><p class="desk-kicker">個人決策 / 計畫與紀錄</p><h1>交易日誌</h1><p class="muted">先寫下買進理由與失效條件，再記錄實際執行。</p></div></header>
 
-  <div class="grid cols-4" id="perf-cards">
-    <div class="card"><div class="k">已實現損益</div><div class="v" id="pf-pnl">—</div></div>
-    <div class="card"><div class="k">勝率</div><div class="v" id="pf-win">—</div><div class="muted" id="pf-n">—</div></div>
-    <div class="card"><div class="k">平均賺 / 平均賠</div><div class="v" id="pf-avg">—</div></div>
-    <div class="card"><div class="k">盈虧比</div><div class="v" id="pf-factor">—</div>
-      <div class="muted">框架：盈虧比 × 勝率決定期望值</div></div>
-  </div>
+  <div class="journal-empty" id="journal-perf-empty" hidden><h2>尚無可計算的已實現績效</h2><p>先建立交易計畫；記錄買賣並有平倉樣本後，這裡會顯示已實現損益與交易統計。</p><a href="#journal-plan" class="btn">撰寫交易計畫</a></div>
 
-  <div class="grid cols-2 mt">
-    <div class="card">
+  <div class="grid cols-2 mt journal-layout">
+    <div class="card journal-plan" id="journal-plan">
       <div class="flex">
         <h2 style="margin:0">買進前八句話（交易計畫）</h2>
         <span class="spacer"></span>
@@ -29,29 +24,29 @@
         1、2、3、4 句需要你自己的判斷（原因、成長驅動力、市場預期、你的優勢）— 這些本質上無法自動生成。
         5、7 句可按右上角「帶入系統草稿」由資料自動草擬，再自行修改。
       </p>
-      <label>股票代號 *</label><input id="pl-stock_id" placeholder="2330">
-      <label>投資週期</label>
+      <label for="pl-stock_id">股票代號 *</label><input id="pl-stock_id" placeholder="2330">
+      <label for="pl-horizon">投資週期</label>
       <select id="pl-horizon">
         <option value="long">長期投資（1-5年）</option>
         <option value="swing" selected>中期波段（1-12個月）</option>
         <option value="short">短線交易（數天-數週）</option>
       </select>
-      <label>1. 我買這家公司是因為什麼？</label><textarea id="pl-q1_reason" rows="2"></textarea>
-      <label>2. 未來獲利成長來自哪裡？</label><textarea id="pl-q2_growth_from" rows="2"></textarea>
-      <label>3. 市場目前的主要預期是什麼？</label><textarea id="pl-q3_market_view" rows="2"></textarea>
-      <label>4. 我的看法與市場有何不同？</label><textarea id="pl-q4_my_edge" rows="2"></textarea>
-      <label>5. 目前價格已經反映多少成長？</label><textarea id="pl-q5_priced_in" rows="2"></textarea>
-      <label>6. 下一個催化事件是什麼？何時？</label><textarea id="pl-q6_catalyst" rows="2"></textarea>
-      <label>7. 哪些數據出現代表我判斷錯了？</label><textarea id="pl-q7_wrong_signal" rows="2"></textarea>
+      <label for="pl-q1_reason">1. 我買這家公司是因為什麼？</label><textarea id="pl-q1_reason" rows="2"></textarea>
+      <label for="pl-q2_growth_from">2. 未來獲利成長來自哪裡？</label><textarea id="pl-q2_growth_from" rows="2"></textarea>
+      <label for="pl-q3_market_view">3. 市場目前的主要預期是什麼？</label><textarea id="pl-q3_market_view" rows="2"></textarea>
+      <label for="pl-q4_my_edge">4. 我的看法與市場有何不同？</label><textarea id="pl-q4_my_edge" rows="2"></textarea>
+      <label for="pl-q5_priced_in">5. 目前價格已經反映多少成長？</label><textarea id="pl-q5_priced_in" rows="2"></textarea>
+      <label for="pl-q6_catalyst">6. 下一個催化事件是什麼？何時？</label><textarea id="pl-q6_catalyst" rows="2"></textarea>
+      <label for="pl-q7_wrong_signal">7. 哪些數據出現代表我判斷錯了？</label><textarea id="pl-q7_wrong_signal" rows="2"></textarea>
 
       <fieldset class="mt">
         <legend>8. 風險與部位（先決定最多虧多少，再反推部位）</legend>
         <div class="grid cols-3" style="padding:10px">
-          <div><label>最大可虧金額 *</label><input type="number" id="pl-q8_max_loss" placeholder="如 30000"></div>
-          <div><label>進場價 *</label><input type="number" id="pl-entry_price" step="0.01"></div>
-          <div><label>停損價 *</label><input type="number" id="pl-stop_price" step="0.01"></div>
-          <div><label>目標價</label><input type="number" id="pl-target_price" step="0.01"></div>
-          <div style="grid-column:span 2"><label>建議部位</label>
+          <div><label for="pl-q8_max_loss">最大可虧金額 *</label><input type="number" id="pl-q8_max_loss" placeholder="如 30000"></div>
+          <div><label for="pl-entry_price">進場價 *</label><input type="number" id="pl-entry_price" step="0.01"></div>
+          <div><label for="pl-stop_price">停損價 *</label><input type="number" id="pl-stop_price" step="0.01"></div>
+          <div><label for="pl-target_price">目標價</label><input type="number" id="pl-target_price" step="0.01"></div>
+          <div style="grid-column:span 2"><span class="field-label">建議部位</span>
             <div id="pos-suggest" class="muted" style="padding:8px 0">填進場/停損/最大虧損後自動計算</div></div>
         </div>
       </fieldset>
@@ -61,17 +56,17 @@
       </div>
     </div>
 
-    <div>
+    <div class="journal-execution">
       <div class="card">
         <h2>記錄成交</h2>
         <div class="grid cols-3">
-          <div><label>代號 *</label><input id="tr-stock_id" placeholder="2330"></div>
-          <div><label>方向 *</label>
+          <div><label for="tr-stock_id">代號 *</label><input id="tr-stock_id" placeholder="2330"></div>
+          <div><label for="tr-side">方向 *</label>
             <select id="tr-side"><option value="buy">買進</option><option value="sell">賣出</option></select></div>
-          <div><label>日期</label><input type="date" id="tr-date"></div>
-          <div><label>股數 *</label><input type="number" id="tr-shares" placeholder="1000"></div>
-          <div><label>價格 *</label><input type="number" id="tr-price" step="0.01"></div>
-          <div><label>關聯計畫</label>
+          <div><label for="tr-date">日期</label><input type="date" id="tr-date"></div>
+          <div><label for="tr-shares">股數 *</label><input type="number" id="tr-shares" placeholder="1000"></div>
+          <div><label for="tr-price">價格 *</label><input type="number" id="tr-price" step="0.01"></div>
+          <div><label for="tr-plan_id">關聯計畫</label>
             <select id="tr-plan_id"><option value="">（無）</option></select></div>
         </div>
         <div class="flex mt">
@@ -100,6 +95,13 @@
       <thead><tr><th class="l">日期</th><th class="l">股票</th><th>方向</th><th>股數</th><th>價格</th><th>手續費</th><th>證交稅</th></tr></thead>
       <tbody></tbody></table></div>
   </div>
+  <section class="journal-performance" id="journal-performance" hidden><h2>已實現績效</h2><div class="grid cols-4" id="perf-cards">
+    <div class="card"><div class="k">已實現損益</div><div class="v" id="pf-pnl">—</div></div>
+    <div class="card"><div class="k">勝率</div><div class="v" id="pf-win">—</div><div class="muted" id="pf-n">—</div></div>
+    <div class="card"><div class="k">平均賺 / 平均賠</div><div class="v" id="pf-avg">—</div></div>
+    <div class="card"><div class="k">盈虧比</div><div class="v" id="pf-factor">—</div>
+      <div class="muted">框架：盈虧比 × 勝率決定期望值</div></div>
+  </div></section>
 </main>
 
 <script src="js/common.js"></script>
@@ -164,6 +166,9 @@ document.getElementById("btn-add-trade").addEventListener("click", async () => {
 /* 載入區塊 */
 async function loadPerf() {
   const p = await api("/api/journal/performance");
+  const hasSample = Number(p.closed_trades) > 0;
+  document.getElementById("journal-performance").hidden = !hasSample;
+  document.getElementById("journal-perf-empty").hidden = hasSample;
   const pnl = document.getElementById("pf-pnl");
   pnl.textContent = fmt.int(p.total_pnl);
   pnl.className = "v " + fmt.cls(p.total_pnl);

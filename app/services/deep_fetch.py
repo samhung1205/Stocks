@@ -80,6 +80,10 @@ def _decumulate_cashflow(acc: dict[str, dict]) -> None:
             continue
         prev = cum.get(f"{y}Q{int(n) - 1}")
         if not prev:
+            # Missing previous cumulative quarter: never label YTD as single-quarter.
+            for c in cols:
+                if c in acc[q]:
+                    acc[q][c] = None
             continue
         for c in cols:
             if acc[q].get(c) is not None and prev.get(c) is not None:
@@ -236,6 +240,8 @@ def cleanup() -> dict:
             SELECT DISTINCT l.stock_id FROM deep_fetch_log l
             LEFT JOIN watchlist w ON w.stock_id = l.stock_id
             WHERE w.stock_id IS NULL AND COALESCE(l.accessed_at, l.fetched_at) < :c
+              AND NOT EXISTS (SELECT 1 FROM backfill_tasks b WHERE b.target=l.stock_id
+                              AND b.dataset='financials' AND b.status='done')
         """, c=cutoff)
         for r in stale:
             sid = r["stock_id"]

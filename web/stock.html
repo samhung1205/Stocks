@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>個股 — 台股分析</title>
 <link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script src="vendor/echarts.min.js"></script>
 <style>
   .stock-layout { display: grid; grid-template-columns: 1fr 360px; gap: 14px; }
@@ -13,13 +14,14 @@
 </style>
 </head>
 <body>
-<main>
+<main class="stock-main">
+  <a class="back-link" id="stock-back" href="index.html">← 返回市場概況</a>
   <div class="flex" id="stock-head">
     <h1 id="title">載入中…</h1>
     <span class="badge" id="mkt-badge"></span>
     <span class="badge" id="ind-badge"></span>
     <span class="spacer"></span>
-    <select id="watch-tier" style="width:130px">
+    <label class="sr-only" for="watch-tier">觀察名單分級</label><select id="watch-tier" style="width:180px">
       <option value="">－ 加入觀察名單 －</option>
       <option value="research">研究中</option>
       <option value="waiting">等買點</option>
@@ -29,7 +31,7 @@
     <button id="btn-refresh" class="ghost">重新抓取資料</button>
   </div>
 
-  <div class="flex" style="align-items:baseline">
+  <div class="stock-price-line" aria-label="最新收盤價格與日期">
     <span class="head-price" id="price">—</span>
     <span id="chg" style="font-size:18px">—</span>
     <span class="muted" id="qdate">（收盤價，每交易日收盤後更新一次）</span>
@@ -40,7 +42,7 @@
   </div>
 
   <div class="stock-layout mt">
-    <div>
+    <div class="stock-chart-area">
       <div class="tabs" id="tabs">
         <button data-tab="kline" class="active">K線量價</button>
         <button data-tab="revenue">月營收</button>
@@ -55,7 +57,10 @@
         <div class="muted" id="tech-line"></div>
       </div>
       <div class="card tab-panel" id="panel-revenue" style="display:none">
+        <div class="revenue-scale-controls"><label for="revenue-scale">年增率尺度</label><select id="revenue-scale"><option value="focus">聚焦常態區間</option><option value="full">顯示完整極值</option></select></div>
         <div id="chart-revenue" class="chart tall"></div>
+        <p id="revenue-scale-note" class="revenue-note" role="note"></p>
+        <details class="more"><summary>查看全部月份原始數值</summary><div id="revenue-values" class="scroll-x"></div></details>
         <p class="muted">單月年增率易受工作天數/農曆年影響，同時看 3 個月累計年增率（框架二之3）。</p>
       </div>
       <div class="card tab-panel" id="panel-profit" style="display:none">
@@ -77,30 +82,28 @@
       </div>
     </div>
 
-    <div>
-      <div class="card">
-        <h2>系統判讀摘要 <span class="badge" id="tilt-badge"></span></h2>
+    <div class="stock-research">
+      <div class="card system-evidence">
+        <h2>系統證據 <span class="badge" id="tilt-badge"></span></h2>
         <div id="narrative">載入中…</div>
       </div>
-      <div class="card mt">
-        <h2>評分表 <span class="muted" id="score-total"></span></h2>
+      <div class="card stock-judgment">
+        <h2>人工判斷與評分 <span class="muted" id="score-total"></span></h2>
         <div id="scorecard">載入中…</div>
-        <label>備註</label>
+        <label for="score-note">備註</label>
         <textarea id="score-note" rows="2"></textarea>
         <div class="flex mt">
           <button id="btn-save-score" class="small">儲存評分</button>
           <span class="muted" id="score-verdict"></span>
         </div>
       </div>
-      <div class="card mt">
-        <h2>警訊</h2>
+      <div class="card stock-risk">
+        <h2>風險與警訊</h2>
         <div id="alerts">載入中…</div>
-      </div>
-      <div class="card mt">
-        <h2>治理人工查核（無免費結構化資料）</h2>
+        <h3>治理人工查核（無免費結構化資料）</h3>
         <div id="checklist"></div>
       </div>
-      <div class="card mt">
+      <div class="card stock-next">
         <h2>下一步</h2>
         <div class="flex">
           <a class="btn" id="link-plan" href="#">寫買進前八句話 →</a>
@@ -114,6 +117,10 @@
 <script>
 const SID = qs("id");
 if (!SID) location.href = "index.html";
+const from = qs("from");
+const back = document.getElementById("stock-back");
+if (from === "screener") { back.href = "screener.html"; back.textContent = "← 返回全市場篩選器"; }
+if (from === "watchlist") { back.href = "watchlist.html"; back.textContent = "← 返回觀察名單"; }
 document.getElementById("link-plan").href = `journal.html?plan=${SID}`;
 
 const charts = {};
@@ -233,11 +240,11 @@ async function drawKline() {
     itemStyle: { color: r.close >= r.open ? CHART_THEME.UP : CHART_THEME.DOWN, opacity: .6 },
   }));
   const mas = { MA20: ma(closes, 20), MA60: ma(closes, 60), MA120: ma(closes, 120), MA240: ma(closes, 240) };
-  const maColors = { MA20: "#e8a33d", MA60: "#4f8ef7", MA120: "#b07ce8", MA240: "#8b93a3" };
+  const maColors = { MA20: "#835516", MA60: CHART_THEME.ACCENT, MA120: "#705c80", MA240: CHART_THEME.MUTED };
   chartOnce("chart-kline").setOption(baseOption({
     tooltip: { trigger: "axis", axisPointer: { type: "cross" },
-      backgroundColor: "#1e222b", borderColor: "#2a2f3a", textStyle: { color: "#e6e9ef", fontSize: 12 } },
-    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+      backgroundColor: CHART_THEME.PANEL2, borderColor: CHART_THEME.BORDER, textStyle: { color: CHART_THEME.TEXT, fontSize: 12 } },
+    legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
     axisPointer: { link: [{ xAxisIndex: "all" }] },
     grid: [{ left: 64, right: 20, top: 34, height: "58%" },
            { left: 64, right: 20, top: "76%", height: "16%" }],
@@ -247,12 +254,12 @@ async function drawKline() {
     ],
     yAxis: [
       { type: "value", scale: true, ...axisStyle() },
-      { type: "value", gridIndex: 1, ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v) } },
+      { type: "value", gridIndex: 1, ...axisStyle(), axisLabel: { color: CHART_THEME.MUTED, formatter: v => fmt.int(v) } },
     ],
     dataZoom: [
       { type: "inside", xAxisIndex: [0, 1], start: 55, end: 100 },
       { type: "slider", xAxisIndex: [0, 1], bottom: 0, height: 16,
-        borderColor: "#2a2f3a", backgroundColor: "#171a21" },
+        borderColor: CHART_THEME.BORDER, backgroundColor: CHART_THEME.PANEL2 },
     ],
     series: [
       { name: SID, type: "candlestick", data: k,
@@ -279,23 +286,37 @@ async function drawRevenue() {
     document.getElementById("chart-revenue").innerHTML = '<p class="muted">尚無月營收資料。</p>';
     return;
   }
-  chartOnce("chart-revenue").setOption(baseOption({
-    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
-    grid: { left: 64, right: 56, top: 34, bottom: 30 },
+  const yoy = rows.flatMap(r => [r.yoy, r.acc_yoy]).filter(v => v != null && Number.isFinite(Number(v))).map(Number);
+  const ordered = [...yoy].sort((a, b) => a - b);
+  const edge = Math.max(Math.abs(ordered[Math.floor(ordered.length * .08)] || 0), Math.abs(ordered[Math.ceil(ordered.length * .92) - 1] || 0), 20);
+  const hasExtreme = yoy.some(v => Math.abs(v) > edge);
+  const scale = document.getElementById("revenue-scale");
+  const note = document.getElementById("revenue-scale-note");
+  if (!hasExtreme) { scale.value = "full"; scale.disabled = true; }
+  document.getElementById("revenue-values").innerHTML = `<table class="data"><caption>全部 ${rows.length} 個月份，圖表聚焦模式不會刪除數值</caption><thead><tr><th class="l">月份</th><th>月營收</th><th>YoY</th><th>累計 YoY</th></tr></thead><tbody>${rows.map(r => `<tr><td class="l">${r.ym}</td><td>${fmt.yi(r.revenue)}</td><td>${fmt.pct(r.yoy)}</td><td>${fmt.pct(r.acc_yoy)}</td></tr>`).join("")}</tbody></table>`;
+  const draw = () => {
+    const focused = scale.value === "focus" && hasExtreme;
+    note.textContent = focused ? `年增率右軸聚焦 ±${fmt.num(edge, 0)}%；${yoy.filter(v => Math.abs(v) > edge).length} 個極值超出目前畫幅。可切換「顯示完整極值」或展開全部月份原始數值。` : "年增率右軸顯示所有極值；下方可展開全部月份原始數值。";
+    chartOnce("chart-revenue").setOption(baseOption({
+    legend: { textStyle: { color: CHART_THEME.MUTED, fontSize: 12 }, top: 0, left: 8, itemWidth: 13 },
+    grid: { left: 58, right: 48, top: 65, bottom: 36 },
     xAxis: { type: "category", data: rows.map(r => r.ym), ...axisStyle() },
     yAxis: [
-      { type: "value", name: "營收(億)", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v / 1e8) } },
-      { type: "value", name: "%", position: "right", splitLine: { show: false }, ...axisStyle() },
+      { type: "value", name: "營收(億)", ...axisStyle(), axisLabel: { color: CHART_THEME.MUTED, formatter: v => fmt.int(v / 1e8) } },
+      { type: "value", name: "%", position: "right", min: focused ? -edge : null, max: focused ? edge : null, splitLine: { show: false }, ...axisStyle() },
     ],
     series: [
       { name: "月營收", type: "bar", data: rows.map(r => r.revenue),
-        itemStyle: { color: "rgba(79,142,247,.55)" } },
+        itemStyle: { color: CHART_THEME.ACCENT, opacity: .65 } },
       { name: "YoY%", type: "line", yAxisIndex: 1, showSymbol: false,
-        data: rows.map(r => r.yoy), lineStyle: { color: CHART_THEME.UP, width: 2 } },
+        data: rows.map(r => r.yoy), lineStyle: { color: "#705c80", width: 2 }, itemStyle: { color: "#705c80" } },
       { name: "累計YoY%", type: "line", yAxisIndex: 1, showSymbol: false,
-        data: rows.map(r => r.acc_yoy), lineStyle: { color: CHART_THEME.WARN, width: 1.5, type: "dashed" } },
+        data: rows.map(r => r.acc_yoy), lineStyle: { color: CHART_THEME.ACCENT, width: 1.5, type: "dashed" }, itemStyle: { color: CHART_THEME.ACCENT } },
     ],
-  }));
+    }), true);
+  };
+  scale.addEventListener("change", draw);
+  draw();
 }
 
 /* ── 獲利能力 ── */
@@ -307,7 +328,7 @@ async function drawProfit() {
   }
   const q = rows.map(r => r.quarter);
   chartOnce("chart-margins").setOption(baseOption({
-    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
     xAxis: { type: "category", data: q, ...axisStyle() },
     yAxis: { type: "value", name: "%", ...axisStyle() },
     series: [
@@ -319,7 +340,7 @@ async function drawProfit() {
     ],
   }));
   chartOnce("chart-eps").setOption(baseOption({
-    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
     xAxis: { type: "category", data: q, ...axisStyle() },
     yAxis: { type: "value", name: "EPS", ...axisStyle() },
     series: [{ name: "單季EPS", type: "bar", data: rows.map(r => r.eps),
@@ -336,22 +357,22 @@ async function drawHealth() {
   }
   const q = rows.map(r => r.quarter);
   chartOnce("chart-cashflow").setOption(baseOption({
-    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
     xAxis: { type: "category", data: q, ...axisStyle() },
-    yAxis: { type: "value", name: "億", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v / 1e8) } },
+    yAxis: { type: "value", name: "億", ...axisStyle(), axisLabel: { color: CHART_THEME.MUTED, formatter: v => fmt.int(v / 1e8) } },
     series: [
       { name: "營業現金流", type: "bar", data: rows.map(r => r.op_cashflow),
         itemStyle: { color: "rgba(63,178,111,.65)" } },
       { name: "稅後淨利", type: "bar", data: rows.map(r => r.net_income),
-        itemStyle: { color: "rgba(79,142,247,.65)" } },
+        itemStyle: { color: CHART_THEME.ACCENT, opacity: .65 } },
       { name: "自由現金流", type: "line", data: rows.map(r => r.fcf), showSymbol: false,
         lineStyle: { color: CHART_THEME.WARN, width: 1.6 } },
     ],
   }));
   chartOnce("chart-working").setOption(baseOption({
-    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
     xAxis: { type: "category", data: q, ...axisStyle() },
-    yAxis: [{ type: "value", name: "億", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v / 1e8) } },
+    yAxis: [{ type: "value", name: "億", ...axisStyle(), axisLabel: { color: CHART_THEME.MUTED, formatter: v => fmt.int(v / 1e8) } },
             { type: "value", name: "負債比%", position: "right", splitLine: { show: false }, max: 100, ...axisStyle() }],
     series: [
       { name: "存貨", type: "line", data: rows.map(r => r.inventory), showSymbol: false },
@@ -368,7 +389,7 @@ async function drawValuation() {
   const hist = v.history || [];
   if (hist.length > 5) {
     chartOnce("chart-pe").setOption(baseOption({
-      legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+      legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
       xAxis: { type: "category", data: hist.map(r => r.date), ...axisStyle() },
       yAxis: [{ type: "value", name: "PE", scale: true, ...axisStyle() },
               { type: "value", name: "殖利率%", position: "right", splitLine: { show: false }, ...axisStyle() }],
@@ -404,9 +425,9 @@ async function drawChips() {
   let cum = 0;
   const cumLine = inst.map(r => (cum += (r.total_net || 0)) / 1000);
   chartOnce("chart-insti").setOption(baseOption({
-    legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+    legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
     xAxis: { type: "category", data: inst.map(r => r.date), ...axisStyle() },
-    yAxis: [{ type: "value", name: "張", ...axisStyle(), axisLabel: { color: "#8b93a3", formatter: v => fmt.int(v) } },
+    yAxis: [{ type: "value", name: "張", ...axisStyle(), axisLabel: { color: CHART_THEME.MUTED, formatter: v => fmt.int(v) } },
             { type: "value", name: "累計(張)", position: "right", splitLine: { show: false }, ...axisStyle() }],
     series: [
       { name: "外資", type: "bar", stack: "n", data: inst.map(r => (r.foreign_net || 0) / 1000) },
@@ -425,7 +446,7 @@ async function drawChips() {
   const mg = c.margin || [];
   if (mg.length) {
     chartOnce("chart-margin-bal").setOption(baseOption({
-      legend: { textStyle: { color: "#8b93a3" }, top: 0 },
+      legend: { textStyle: { color: CHART_THEME.MUTED }, top: 0 },
       xAxis: { type: "category", data: mg.map(r => r.date), ...axisStyle() },
       yAxis: { type: "value", name: "張", ...axisStyle() },
       series: [
@@ -462,6 +483,7 @@ async function loadScore() {
       <div class="score-bar"><div style="width:${(it.effective || 0) / it.max * 100}%"></div></div>
       <span>${it.effective != null ? it.effective : "—"}</span>
       <input type="number" min="0" max="${it.max}" step="0.5" data-key="${it.key}"
+             aria-label="${it.label}人工評分，滿分 ${it.max}"
              value="${it.manual != null ? it.manual : ""}"
              placeholder="${it.manual_only ? "人工" : "自動" + (it.auto ?? "")}">
       ${it.reasons.length ? `<div class="reasons">${it.reasons.join("；")}</div>` : ""}

@@ -1,0 +1,13 @@
+*
+!pyproject.toml
+!uv.lock
+!app/
+!app/**
+!web/
+!web/**
+!scripts/
+!scripts/start-railway.sh
+!scripts/railway-import-server.py
+**/__pycache__/
+**/*.pyc
+**/.DS_Store

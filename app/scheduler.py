@@ -1,28 +1,14 @@
-"""排程：平日收盤後更新輕量層、每月 10-12 日抓全市場月營收、每週清理。"""
+"""排程：平日收盤後自動補齊輕量層（Stage L1，見 app/services/data_freshness.py）、
+每月 10-12 日抓全市場月營收、每週清理。"""
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app import config
+
 log = logging.getLogger(__name__)
 _scheduler: BackgroundScheduler | None = None
-
-
-def _daily_job():
-    from app.services import market_daily, deep_fetch
-    from app.db import engine, query_all
-    try:
-        market_daily.update_daily()
-    except Exception as e:
-        log.error("daily update failed: %s", e)
-    # 觀察名單個股順帶刷新深度資料
-    try:
-        with engine.begin() as conn:
-            watch = query_all(conn, "SELECT stock_id FROM watchlist")
-        for r in watch:
-            deep_fetch.ensure_deep(r["stock_id"])
-    except Exception as e:
-        log.error("watchlist deep refresh failed: %s", e)
 
 
 def _revenue_job():
@@ -41,14 +27,31 @@ def _cleanup_job():
         log.error("cleanup failed: %s", e)
 
 
+def _daily_refresh_window() -> tuple[int, int]:
+    """Poll window: from AUTO_REFRESH_CHECK_TIME's hour through the hour the
+    bounded retry window ends. Only bounds POLLING cadence (a resource-use
+    optimization); it never decides whether a date counts as fresh/stale --
+    that gate is app.services.data_freshness's real trading-day evidence."""
+    check_hour = int(config.AUTO_REFRESH_CHECK_TIME.split(":")[0])
+    end_hour = min(23, check_hour + max(1, config.AUTO_REFRESH_RETRY_WINDOW_MINUTES // 60 + 1))
+    return check_hour, end_hour
+
+
 def start() -> BackgroundScheduler:
     global _scheduler
     if _scheduler:
         return _scheduler
-    sched = BackgroundScheduler(timezone="Asia/Taipei")
-    # 平日 15:00（證交所盤後資料多在 14:30-15:00 就緒；OpenAPI 反映最新交易日）
-    sched.add_job(_daily_job, CronTrigger(day_of_week="mon-fri", hour=15, minute=5),
-                  id="daily_update", replace_existing=True)
+    sched = BackgroundScheduler(timezone=config.AUTO_REFRESH_TIMEZONE)
+    if config.AUTO_REFRESH_ENABLED:
+        from app.services import data_freshness
+        start_hour, end_hour = _daily_refresh_window()
+        interval = max(1, config.AUTO_REFRESH_POLL_INTERVAL_MINUTES)
+        # 平日盤後檢查時間起、bounded 重試時間窗內，低頻輪詢一次
+        # market_daily 既有 daily pipeline 是否可補齊（見 data_freshness.attempt_refresh）。
+        sched.add_job(data_freshness.scheduler_tick,
+                      CronTrigger(day_of_week="mon-fri", hour=f"{start_hour}-{end_hour}",
+                                  minute=f"*/{interval}"),
+                      id="daily_refresh_tick", replace_existing=True)
     # 月營收法定申報期限為每月 10 日；10/11/12 各跑一次補齊
     sched.add_job(_revenue_job, CronTrigger(day="10-12", hour=20, minute=0),
                   id="monthly_revenue", replace_existing=True)

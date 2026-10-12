@@ -29,10 +29,23 @@ ROLE_DEFAULTS = {
                 "dividend_yield": 3.5},
     "cash": {"label": "現金", "assumed_return": 1.0, "asset": "cash",
              "dividend_yield": 1.0},
+    # Stage I1: pseudo-role for a Strategy Portfolio investment source (see is_portfolio_key()
+    # below). assumed_return is deliberately None -- there is no ETF-style constant that can
+    # stand in for a Strategy Portfolio's future return, and this role must never let
+    # allocation.allocate() silently fall back to a number (AGENTS.md "no silent fallback").
+    "strategy_portfolio": {"label": "策略組合（Strategy Portfolio）", "assumed_return": None,
+                           "asset": "equity", "dividend_yield": 0.0},
+    # Stage I1.1 hotfix: source_type='manual' 的專屬角色——一個使用者自訂、平台完全
+    # 不知道是什麼資產的項目（例如「儲蓄險」「私募基金」），不得沿用 core_tw / TW
+    # equity 這種「看起來是台股 ETF」的分類（見 docs/RESEARCH_CONTRACTS.md §16、
+    # docs/history/stage-i0-planner-integration-contract-report.md §2）。asset/region 都是
+    # 明確的「未分類」值，不是任何一種真實資產類別的猜測。
+    "manual": {"label": "自訂資產（未分類）", "assumed_return": None, "asset": "other",
+              "dividend_yield": 0.0},
 }
 
-ASSET_LABELS = {"equity": "股票", "bond": "債券", "cash": "現金"}
-REGION_LABELS = {"TW": "台灣", "US": "美國", "-": "現金"}
+ASSET_LABELS = {"equity": "股票", "bond": "債券", "cash": "現金", "other": "其他／未分類"}
+REGION_LABELS = {"TW": "台灣", "US": "美國", "-": "現金", "unspecified": "未指定"}
 
 # 內扣費用（fee）為經理費＋保管費的概略年費率(%)，人工維護。
 UNIVERSE = {
@@ -115,8 +128,48 @@ OVERLAP_NOTES = {
 }
 
 
-def meta(stock_id: str) -> dict:
-    """取某檔的 metadata；不在名單內的自訂代號給一組保守的預設值。"""
+PORTFOLIO_KEY_PREFIX = "portfolio:"
+
+
+def portfolio_key(strategy_portfolio_id) -> str:
+    """Stage I1：一個 Strategy Portfolio 在 finance_targets.stock_id 裡的 opaque key
+    慣例——絕不是真實股票代號，見 app/services/finance/portfolio_source.py。"""
+    return f"{PORTFOLIO_KEY_PREFIX}{strategy_portfolio_id}"
+
+
+def is_portfolio_key(stock_id) -> bool:
+    return isinstance(stock_id, str) and stock_id.startswith(PORTFOLIO_KEY_PREFIX)
+
+
+def meta(stock_id: str, source_type: str | None = None) -> dict:
+    """取某檔的 metadata；不在名單內的自訂代號給一組保守的預設值。
+
+    Stage I1：``portfolio:<id>`` 前綴的 key 一律分類成 ``strategy_portfolio`` 角色
+    （見 ROLE_DEFAULTS），資產/地區只是簡化 reporting 近似值，不作為配置或研究限制——
+    這個角色的 ``assumed_return`` 是 None，所以 default_return() 對它永遠不會給出
+    一個看起來像「預測」的數字。
+
+    Stage I1.1 hotfix：``source_type`` 是可選參數，預設 ``None``——**任何既有呼叫端
+    不傳這個參數，行為與 Stage I1 之前完全一樣**（backward compatible by construction，
+    不需要一次性遷移任何呼叫點）。只有呼叫端明確傳入 ``source_type="manual"`` 時，
+    才會拿到 `manual` 這個「未分類」角色，而不是「不在名單內就當成 core_tw / TW
+    equity」的舊 fallback——那個舊 fallback 只保留給 ``source_type`` 不是 `"manual"`
+    的情況（即 legacy ``NULL``、``'etf'``），語意完全不變。
+    """
+    if is_portfolio_key(stock_id):
+        return {
+            "stock_id": stock_id, "role": "strategy_portfolio", "region": "TW",
+            "overlap": stock_id, "fee": 0.0, "income_focus": False, "custom": False,
+            "note": "Strategy Portfolio 整體部位；資產類別／地區為簡化近似值，"
+                    "詳細研究證據請見 /api/finance/portfolio-evidence。",
+        }
+    if source_type == "manual":
+        return {
+            "stock_id": stock_id, "role": "manual", "region": "unspecified",
+            "overlap": f"manual_{stock_id}", "fee": 0.0, "income_focus": False, "custom": True,
+            "note": "使用者自訂資產：不屬於任何 ETF role，未分類為特定資產類別／地區，"
+                    "請自行設定假設報酬。",
+        }
     m = UNIVERSE.get(stock_id)
     if m:
         return {**m, "stock_id": stock_id, "custom": False}
@@ -127,16 +180,16 @@ def meta(stock_id: str) -> dict:
     }
 
 
-def asset_of(stock_id: str) -> str:
-    return ROLE_DEFAULTS[meta(stock_id)["role"]]["asset"]
+def asset_of(stock_id: str, source_type: str | None = None) -> str:
+    return ROLE_DEFAULTS[meta(stock_id, source_type)["role"]]["asset"]
 
 
-def default_return(stock_id: str) -> float:
-    return ROLE_DEFAULTS[meta(stock_id)["role"]]["assumed_return"]
+def default_return(stock_id: str, source_type: str | None = None) -> float:
+    return ROLE_DEFAULTS[meta(stock_id, source_type)["role"]]["assumed_return"]
 
 
-def default_yield(stock_id: str) -> float:
-    return ROLE_DEFAULTS[meta(stock_id)["role"]]["dividend_yield"]
+def default_yield(stock_id: str, source_type: str | None = None) -> float:
+    return ROLE_DEFAULTS[meta(stock_id, source_type)["role"]]["dividend_yield"]
 
 
 def default_selection() -> list[str]:
