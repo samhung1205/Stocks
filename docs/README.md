@@ -12,7 +12,7 @@
 | 模組、資料流、DB／API／UI 邊界 | [ARCHITECTURE.md](ARCHITECTURE.md) | `app/`、`web/`、`tests/` |
 | 時點資料、OOS、版本、Portfolio 等研究契約 | [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md)、[AGENTS.md](../AGENTS.md) | 契約版本、相關 Stage 報告與測試 |
 | Railway 部署與最後驗證狀態 | [railway-deployment.md](railway-deployment.md)、[DEPLOY.md](../DEPLOY.md) | 線上健康與資料 freshness；紀錄是 dated snapshot |
-| AI 或開發代理要修改專案 | [AGENTS.md](../AGENTS.md) | `CLAUDE.md` 僅供 Claude Code 的工具流程 |
+| AI 或開發代理要修改專案 | [AGENTS.md](../AGENTS.md) | `CLAUDE.md` 僅含 `@AGENTS.md` 相容匯入；共用規則只維護一份 |
 
 正式 `v1.0.0` tag 是 Stage K2 checkpoint；本工作樹後續的 L1/L1.1 與 Railway 部署不可倒寫成 v1.0.0 已包含的功能。更新現行文件時，依程式和實測結果同步修正；不要只複製 Stage 報告的舊敘述。
 

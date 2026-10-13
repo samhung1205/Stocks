@@ -45,7 +45,21 @@ uv run python tests/smoke.py backtest   # Backtest 核心手算交叉驗證（�
 uv run python -m compileall app tests scripts
 ```
 
-`tests/test_*.py`（`unittest`）是主要的正確性驗證；其中大多數是離線純函式測試，少數會對真實本機 DB 做唯讀整合測試，資料不存在時自動跳過。請以當次完整測試的輸出為準，勿沿用 Stage J 的 389 項歷史數字。`tests/smoke.py` 才會打外部 API（有禮貌限速，勿頻繁重跑）。策略研究的真實資料驗證另見 `scripts/` 的一次性腳本；它們不是日常測試的替代品。
+`tests/test_*.py`（`unittest`）是主要的正確性驗證；其中大多數是離線純函式測試，部分 fixture-gated 整合測試會讀取真實資料；`tests/test_portfolio_lab.py` 與 `tests/test_finance_portfolio_integration.py` 的部分測試還會建立 Portfolio／研究紀錄，部分以 archive 收尾，並非唯讀。fixtures 不存在時會自動跳過。要跑含真實 fixtures 的完整套件，先用 `scripts/backup_sqlite.py` 建立隔離副本，透過 `STOCKS_DB_URL` 與 `STOCKS_DATA_DIR` 指向副本及其暫存資料目錄，避免把測試紀錄寫入日常 DB。請以當次完整測試的輸出為準，勿沿用 Stage J 的 389 項歷史數字。`tests/smoke.py` 才會打外部 API（有禮貌限速，勿頻繁重跑）。策略研究的真實資料驗證另見 `scripts/` 的一次性腳本；它們不是日常測試的替代品。
+
+## 代理指令、本機規格與資料源筆記
+
+所有代理共用根目錄 `AGENTS.md`。`CLAUDE.md` 僅含 `@AGENTS.md`，兼容尚未直接載入 AGENTS 的 Claude Code；不要在入口另存一份共用規則。更新後可在 Claude Code 使用 `/context` 核對 Memory files 的載入來源。
+
+修改對應功能前，若本機規格存在，先閱讀相關章節：
+
+- 個股分析、評分、篩選器：`spec/台股投資分析實戰框架.md`。
+- 財務規劃／ETF：`spec/個人財務狀況與 ETF 長期投資平台開發.md`。
+- Strategy Lab／Portfolio：`spec/Strategy Lab-Backtesting Engine-Portfolio Lab.md`。
+
+三份均位於忽略版控的 `spec/`；新 checkout 可能沒有。現行架構與研究契約仍以本庫共用文件為準，不能用舊規格推翻已揭露的 hotfix。
+
+修改 `app/datasources/` 時先讀該模組與相關測試。若 Claude session 提供 `twse-data-source-gotchas.md` 記憶筆記，可查已解決的 TPEx SSL、MOPS domain/Big5、FinMind 累計現金流及法人欄位陷阱；這是可選的本機上下文，不是跨代理保證存在的共用依賴。缺少筆記時以來源程式／測試及任務需要的官方文件查證，不臆測筆記內容。
 
 ## 研究模組與原始框架對照
 
@@ -62,7 +76,7 @@ uv run python -m compileall app tests scripts
 
 ### Strategy Lab（策略實驗室，`web/strategy.html` 單頁，Stage D～H1）
 
-`strategy.html` 一頁整合 Strategy Lab、Optimization、Walk Forward 三塊 UI（沒有各自獨立的頁面）；Strategy Portfolio 有獨立的 `portfolio.html` 介面（Stage H2）。Cross-Strategy 分析目前**只有 API，沒有 UI**。所有研究功能共用同一個回測引擎（`app/services/strategy/`，純函式、無副作用），backend 邏輯在 `app/services/*_lab.py`，routes 只做參數解析（見 [docs/ARCHITECTURE.md](ARCHITECTURE.md)）。
+`strategy.html` 一頁整合 Strategy Lab、Optimization、Walk Forward 三塊 UI（沒有各自獨立的頁面）；Strategy Portfolio 有獨立的 `portfolio.html` 介面（Stage H2）。Cross-Strategy 分析目前**只有 API，沒有 UI**。所有研究功能共用純函式回測計算核心；`app/services/strategy/panel.py` 是同套件內的 DB 讀取 adapter。`*_lab.py` 負責持久化與生命週期，其他既有 DB adapters 及 routes 的直接 DB 例外見 [ARCHITECTURE.md](ARCHITECTURE.md) §2；新增路由邏輯應委派 service。
 
 - **Strategy Lab**（`strategy_lab.py`）— 五套預設策略模板（quality_growth_momentum / revenue_growth_acceleration / momentum_trend / value_quality / low_volatility_quality），策略/版本不可變（改參數會產生新版本，不覆寫）、單次回測、逐日 equity curve、成交明細。
 - **Optimization / Robustness**（`optimization_lab.py`）— 網格搜尋 + plateau/robustness region 偵測；目的是找「穩健區域」不是找「歷史最高 Sharpe」——API 回應裡沒有任何 `winner`/`best` 欄位。
@@ -136,7 +150,7 @@ export AUTO_REFRESH_STATUS_CACHE_SECONDS=60      # Stage L1.1：/api/admin/data-
 
 - **三層資料策略**：全市場輕量層（每日全表、永遠在庫）→ 個股深度層（開頁/加觀察/篩中才抓，12 小時內視為新鮮）→ 清理層（非觀察名單 90 天未存取可釋放）
 - **行情可插拔**：`app/datasources/realtime_base.py` 定義介面；有 `FUGLE_API_KEY` 就自動用富果真即時，否則退回 MIS 快照（金鑰失效時也會自動降級，不會整個報價功能掛掉）
-- **Strategy Lab 是純函式核心 + 薄 service 層**：回測引擎（`app/services/strategy/`）不碰 DB；`*_lab.py`（strategy/optimization/walkforward/portfolio）負責持久化、版本控管與 run 生命週期；routes.py 只做參數解析
+- **Strategy Lab 是純函式計算核心 + 持久化／adapter 層**：`*_lab.py` 負責版本及 run 生命週期；`strategy/panel.py`、`walkforward/freeze.py`、`cross_strategy/data.py`、`portfolio/data.py` 是既有 DB 邊界，計算核心不碰 DB。新路由委派 services；現有直接 DB 例外見 [ARCHITECTURE.md](ARCHITECTURE.md) §2。
 - **私人部署**：Railway 單一 worker／replica、`/data` 持久磁碟、全站 HTTP Basic 保護；僅 GET/HEAD `/api/health` 公開。雲端啟動要求既有且有效的 SQLite，不會建立空白 DB；本機與雲端資料各自獨立。
 
 ## 高階目錄結構
@@ -146,7 +160,7 @@ app/
   api/routes.py            # 唯一的 REST 層（薄）
   config.py                # 環境變數（.env，自製 parser）
   access.py                # 私人部署的全站 HTTP Basic 存取保護
-  db/tables.py              # 唯一的 schema 定義來源（SQLAlchemy Core）
+  db/tables.py              # table/column 宣告；db/migrations.py 執行 DDL/triggers
   datasources/               # twse / tpex / finmind / mops / mis_snapshot / fugle
   services/
     market_daily.py, deep_fetch.py, stock_view.py, scoring.py,
