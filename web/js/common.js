@@ -255,7 +255,8 @@ renderNav();
 window.accountReady = api('/api/auth/me').then(user => {
   document.querySelectorAll('[data-admin]').forEach(el => { el.hidden = user.role !== 'admin'; });
   const link = document.createElement('a'); link.href = '/account.html'; link.className = 'account-nav';
-  link.textContent = '帳號'; link.setAttribute('aria-label', `帳號與存取：${user.display_name}`);
+  link.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9.25"/><circle cx="12" cy="9" r="3"/><path d="M5.4 18.4a6.8 6.8 0 0 1 13.2 0"/></svg>';
+  link.title = '帳號與存取'; link.setAttribute('aria-label', `帳號與存取：${user.display_name}`);
   if (location.pathname.endsWith('/account.html')) link.setAttribute('aria-current', 'page');
   document.querySelector('.topbar')?.append(link);
   return user;
