@@ -154,7 +154,7 @@ export AUTO_REFRESH_STATUS_CACHE_SECONDS=60      # Stage L1.1：/api/admin/data-
 - **三層資料策略**：全市場輕量層（每日全表、永遠在庫）→ 個股深度層（開頁/加觀察/篩中才抓，12 小時內視為新鮮）→ 清理層（非觀察名單 90 天未存取可釋放）
 - **行情可插拔**：`app/datasources/realtime_base.py` 定義介面；有 `FUGLE_API_KEY` 就自動用富果真即時，否則退回 MIS 快照（金鑰失效時也會自動降級，不會整個報價功能掛掉）
 - **Strategy Lab 是純函式計算核心 + 持久化／adapter 層**：`*_lab.py` 負責版本及 run 生命週期；`strategy/panel.py`、`walkforward/freeze.py`、`cross_strategy/data.py`、`portfolio/data.py` 是既有 DB 邊界，計算核心不碰 DB。新路由委派 services；現有直接 DB 例外見 [ARCHITECTURE.md](ARCHITECTURE.md) §2。
-- **私人部署**：Railway 單一 worker／replica、`/data` 持久磁碟。新程式預設邀請制帳號／session／CSRF；啟動要求已初始化管理員與 v7 schema，雲端另外要求既有有效 SQLite。最後驗證的線上版本仍為 Basic；新帳號遷移未執行。操作、復原與上線順序見 [ACCOUNTS.md](ACCOUNTS.md)；本機與雲端資料各自獨立。
+- **私人部署**：Railway 單一 worker／replica、`/data` 持久磁碟。新程式預設邀請制帳號／session／CSRF；啟動要求已初始化管理員與 v7 schema，雲端另外要求既有有效 SQLite。2026-10-14 本機與 Railway 已完成 v7 遷移並保留原管理員登入，正式 HTTPS 帳號流程已驗證。操作、復原與上線順序見 [ACCOUNTS.md](ACCOUNTS.md)；本機與雲端資料各自獨立。
 
 ## 高階目錄結構
 

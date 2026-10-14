@@ -1,6 +1,6 @@
 # Architecture Reference
 
-Repo-level architecture map for Stage L1/L1.1 plus invitation-only accounts (2026-10-14 source). Account migration and rollout have not been performed on the daily/production DB; last verified Railway state is tracked separately in [railway-deployment.md](railway-deployment.md). Contract details live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md), current scope in [PROJECT_STATUS.md](PROJECT_STATUS.md), and delivery history in `docs/history/stage-*.md`. If this file and the code disagree, fix the documentation in the same change that caused the drift.
+Repo-level architecture map for Stage L1/L1.1 plus invitation-only accounts (2026-10-14 source). Local/production v7 migration and account rollout were verified on 2026-10-14 with the owner login preserved; deployment evidence is tracked separately in [railway-deployment.md](railway-deployment.md). Contract details live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md), current scope in [PROJECT_STATUS.md](PROJECT_STATUS.md), and delivery history in `docs/history/stage-*.md`. If this file and the code disagree, fix the documentation in the same change that caused the drift.
 
 ## 1. Major modules
 

@@ -1,6 +1,6 @@
 # 邀請制帳號與資料隔離
 
-2026-10-14：本工作樹新增功能；尚未遷移日常／Railway 資料庫，未部署。這份文件描述新帳號模式，線上最後驗證狀態仍見 [部署紀錄](railway-deployment.md)。
+2026-10-14：日常與 Railway 資料庫均已備份並遷移至 v7，新帳號模式已部署，原管理員帳密保留。正式 HTTPS 登入、CSRF 及登出已驗證，詳見 [部署紀錄](railway-deployment.md)。兩份資料庫與後續密碼變更仍各自獨立，不自動同步。
 
 ## 使用方式
 
@@ -71,9 +71,9 @@ uv run python scripts/accounts.py recover
 
 `STOCKS_AUTH_MODE=basic` 僅為明確選用的舊版單人相容／既有測試模式，仍使用原 HTTP Basic 規則，沒有多帳號隔離保證。帳號模式失敗時不會退回 basic；不可把 basic 當成朋友共用方案。
 
-## Railway 上線順序（尚未執行）
+## Railway 上線／新環境遷移順序（本次已完成，重用時先核對現況）
 
-1. 準備並確認備份與回復方式，安排停止寫入的維護時段。保留舊版部署資訊，不把此文件當成已上線證據。
+1. 準備並確認備份與回復方式，安排停止寫入的維護時段。保留舊版部署資訊，實際完成證據另記於部署紀錄，此節是操作順序。
 2. 新映像包含 `scripts/accounts.py` 與 `scripts/backup_sqlite.py`。需要可運行容器進行首次遷移時，使用既有 `STOCKS_IMPORT_MODE=1` health-only 程序；它不啟動 app 或 jobs，`status: importing` 不代表帳號系統就緒。
 3. 在可信容器終端，確認 `/data` 的既有 DB 路徑，執行上述 init 指令。新密碼由擁有人直接輸入；保留原 Basic 帳密可用 `init --from-basic-env` 直接轉入既有環境設定。不要把 secrets 輸出或寫入一般啟動指令。
 4. 設 `STOCKS_AUTH_MODE=accounts`，關閉 import mode，保留既有磁碟、單 worker、Taiwan TZ 與排程設定，再啟動正常 app。啟動前檢查 migration v7 及已初始化的主要管理員；未就緒會 fail closed。
@@ -98,8 +98,18 @@ uv run python -m compileall app tests scripts
 
 - 一致性備份副本上完整套件 **467 項通過**，其中新帳號測試 25 項；`compileall`、變更的 JS 語法及 `git diff --check` 通過。
 - 另在全新臨時 DB 執行 operator CLI 的 init 與 recover，驗證 recovery 前產生一致備份並輸出 reset 路徑；測試 token 未收錄於文件。新路由、script 路徑與現行文件相對連結均已核對。
-- v6 → v7 前後逐一比對 24 張私人表的原欄位／列值：研究內容、版本、pins、結果及 ids 保留。日常 DB 仍為 v6，沒有 users 表；未執行其遷移。
+- v6 → v7 前後逐一比對 24 張私人表的原欄位／列值：研究內容、版本、pins、結果及 ids 保留。其後已依下節完成日常與雲端的實際遷移，並分別再次比對。
 - 另在真實行情隔離副本以 accounts 模式啟動 lifespan，由新成員登入、建立策略、透過 FIFO worker 完成 2023 半年單股回測（113 筆 equity rows）。本人結果 200、管理員跨帳號結果 404、成員管理入口 403；這是功能驗證，不是策略成效證據。
 - Disposable DB 上檢視登入／帳號頁桌面與 390px 手機、實際登入及建立測試邀請；未向任何朋友傳送。獨立介面審查發現的導覽位置已修正；修正後 source verdict 為 resolved，IAB 無法重開，故未重拍該項。截圖僅為工具 inline 證據，沒有可保存的 screenshot 檔案。
 - 一次設計 detector 對新帳號頁／樣式／JS 無 findings；舊儀表板／個股／Planner 的既有排版及破折號提示未在此次重設計。設計文件核對確認沿用既有 tokens，無新視覺系統。
-- 未測正式 HTTPS／Railway 遷移、代理轉送來源 IP、真實邀請交付或正式復原演練；上線仍須按前節驗收。沒有部署或為朋友建立真實帳號。
+- 初次實作驗證時未部署；其後的實際遷移與 HTTPS 驗證見下節。未測真實朋友邀請交付、正式復原演練或代理來源 IP 完整信任鏈。
+
+### 2026-10-14 實際遷移與部署
+
+- 使用者另行授權保留原帳號、遷移與部署。新增 operator-only `init --from-basic-env`，直接將既有環境設定雜湊轉入；密碼未列印、未寫到本機 `.env` 或 Git。主要管理員固定 id=1，沒有建立真實朋友帳號。
+- 完整隔離副本套件 **468 項通過**（帳號測試 26 項），含舊帳密轉入、只能初始化一次、缺少 operator 身分拒絕、後續新密碼仍遵守長度規則；compileall 與 diff 檢查通過。
+- 本機與雲端各自先以 backup API 備份，再遷移為 v7；24 張私人表排除新增 owner metadata 的原欄位內容，分別逐表指紋一致。沒有用本機 DB 覆蓋雲端或反向覆蓋。雲端遷移前備份另下載到本機，解壓後大小、SHA-256 與 integrity_check 均吻合。
+- 本機 `http://127.0.0.1:8787` 已啟動，原帳密登入／admin／私人讀取／CSRF／logout 通過。本機 HTTP 只對 loopback，使用 `STOCKS_COOKIE_SECURE=0`；正式 HTTPS 保持 Secure。
+- Railway 先用 health-only 維護版停止 app/jobs；遷移前確認四類研究均沒有 queued/running。遷移驗收後設 `STOCKS_AUTH_MODE=accounts`、`STOCKS_IMPORT_MODE=0`，正式部署 `17331cbf` 為 SUCCESS；原單 worker、磁碟與排程設定保留。
+- 正式 HTTPS 實測：health 200；匿名 me 401、account page 303；login page 200；原帳密登入 200、owner id=1/admin；account/admin accounts/Planner/持股/策略/Portfolio 讀取 200；缺 CSRF 的 logout 403、正確 CSRF logout 200、舊 session 再讀 me 401。Cookie 有 Secure／HttpOnly／SameSite=Lax。TLS 正常驗證，未停用憑證檢查。
+- 朋友權限與 A/B 隔離仍以隔離 DB 的自動化／真實行情測試驗證；正式環境只驗證原管理員，不以測試朋友帳號污染正式 users。真實邀請由管理員日後在帳號頁產生。

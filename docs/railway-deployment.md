@@ -1,8 +1,8 @@
 # Railway 部署紀錄
 
-更新：2026-10-12。**正式應用、持久資料庫與登入保護已上線；HTTPS 驗證通過，使用者已於 2026-10-06 確認登入成功且使用正常。最近一次部署為 2026-10-12 的前端介面更新，登入後畫面尚待使用者確認。**
+更新：2026-10-14。**邀請制帳號已部署，本機與 Railway DB 均完成 v7 遷移，原管理員帳密與既有資料保留。正式 HTTPS 登入、權限、私人資料讀取、CSRF 及登出撤銷已驗證。** 早期 Basic 部署紀錄保留歷史語境。
 
-正式網址：[台股研究平台](https://stocks-production-eeb3.up.railway.app)。使用 Railway Variables 設定的帳密登入；目前沒有註冊或獨立使用者資料隔離。
+正式網址：[台股研究平台登入](https://stocks-production-eeb3.up.railway.app/login.html)。原擁有人使用既有帳密登入管理員，朋友由管理員邀請，各自私人資料隔離，沒有公開註冊。
 
 ## 已完成
 
@@ -49,15 +49,28 @@
 - 重新部署會重啟服務；當時若有執行中的回測或研究工作會被標記為失敗，需由使用者續跑。這次沒有確認部署當下是否有工作在執行。
 - 本次沒有新增自動化測試：變更不涉及 Python，現有測試也不涵蓋前端；前端在本機瀏覽器逐頁檢查過。
 
+## 2026-10-14 邀請制帳號與資料遷移部署
+
+- 使用者授權保留原帳號並部署、commit／push。程式 commit `83960d5`，完整隔離 DB 套件 468 項通過（其中帳號測試 26 項）；compileall／JS 語法／diff 檢查通過。Docker build 明確包含 accounts.py／backup_sqlite.py，修正 `.dockerignore` 的 allowlist。
+- 遷移前確認雲端 Backtest／Optimization／Walk Forward／Portfolio 沒有 queued/running；先部署 health-only 維護版 `9ce52247`，health=`importing`、私人頁拒絕存取，app/jobs 不執行，再進行 DB 操作。
+- 本機先備份為 `data/backups/before-accounts-20261014-182622-845606.db`（645,578,752 bytes）；雲端先備份為 `/data/backups/pre-accounts-20261014-cloud.db`（642,273,280 bytes），operator CLI 另建 `/data/backups/before-accounts-20261014-183217-225727.db`。所有備份使用 SQLite backup API 並通過 integrity_check。
+- 雲端備份已透過 SSH gzip 串流下載，本機保留 `data/backups/pre-accounts-20261014-cloud.db` 及壓縮副本；解壓後與遠端 SHA-256 相同、大小相同、integrity_check=ok。中斷的一般下載 partial 已清除；備份均不入 Git 或部署映像。
+- 本機與雲端各自遷移為 schema v7；兩者的 24 張私人表原有欄位／內容指紋在遷移前後一致，舊資料根表全部歸 id=1。兩份資料庫互不覆蓋，之後的資料與密碼變更也不自動同步。
+- 使用 operator-only `init --from-basic-env` 保留原帳密，直接 Argon2id 雜湊轉入管理員，不列印帳密、不寫入本機 `.env` 或 Git；沒有真實朋友帳號。既有短密碼只允許這次轉入，後續新密碼要求仍為 12–128 字元。
+- 解除維護：`STOCKS_IMPORT_MODE=0`、`STOCKS_AUTH_MODE=accounts`。正式部署 `17331cbf-d4bc-4246-89e3-295953a09bd0` 於 2026-10-14 18:35（台北時間）SUCCESS，app startup／scheduler 正常。保留既有 `/data`、單 replica/worker 與 Taiwan TZ，未執行 config apply 或新增資源。
+- 正式 HTTPS 驗收通過：原帳密登入 200，me 為 id=1/admin；帳號頁、管理員帳號列表、Planner、持股、策略及 Portfolio 讀取 200。匿名 me 401、帳號頁 303 至登入頁；Secure/HttpOnly/SameSite=Lax cookies；缺 CSRF logout 403，正確 logout 200，撤銷後 me 401。TLS 未放寬。沒有列印任何私人頁面的回應內容。
+- 本機服務已在 loopback 8787 啟動，使用相同原帳密完成同一組登入／讀取／CSRF／登出檢查。本機 HTTP 的非 Secure cookie 僅限此 loopback 開發設定，Railway 固定 Secure。
+- 本次沒有送出真實邀請、變更朋友權限或執行正式還原演練。成員禁止管理與 A/B 資料隔離由隔離 DB 測試驗證；資料 freshness 完整性仍依當下回應與研究契約核對，不能從帳號部署成功推定。
+
 ## 下一步
 
 1. 先重新讀取線上 `/api/admin/data-freshness`（需登入）與實際表資料，確認 2026-09-29、2026-09-30 缺口及估值延遲是否仍存在；不要把 2026-10-05 的 `partial` 當作今日即時狀態，也不要未經驗證就宣稱已修復。
 2. 為 production volume 建立持續的一致性 SQLite 備份與還原演練；目前只驗證了首次匯入與重啟保存，持久磁碟本身不等於備份。
-3. 2026-10-14 工作樹已實作邀請制帳號、admin/member 與私人資料隔離；**尚未遷移正式資料庫或部署**。請依 [ACCOUNTS.md](ACCOUNTS.md) 的維護、備份、初始化及驗收順序上線，不能把目前線上的共用帳密視為多使用者系統。
+3. 帳號模式已完成下節的遷移、部署與 HTTPS 驗收。後續由管理員邀請朋友使用各自帳號，新環境操作與復原見 [ACCOUNTS.md](ACCOUNTS.md)。
 
 ## 注意事項
 
-- 最後驗證的線上版本使用共用帳密及資料；新程式的個別使用者隔離必須完成上述遷移部署後才生效。
+- 2026-10-14 起正式版本採個別帳號隔離；原 Basic 帳密只透過 operator 轉入主要管理員，沒有公開 bootstrap。舊紀錄中的 Basic 驗證不代表現行登入方式。
 - 上線後本機與 Railway 的 SQLite 是兩份獨立資料庫，不會自動雙向同步。
 - 持久磁碟避免重啟丟資料，但仍需要獨立備份；不要把舊 DB 備份全放在 production volume。
 - 目前既有排程使用 15 分鐘的時鐘格點（15:00、15:15…），`AUTO_REFRESH_CHECK_TIME` 的分鐘尚未精確套用；此部署沒有修改這項既有行為。自動更新仍以實際缺漏交易日及重試契約為準。
