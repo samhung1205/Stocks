@@ -1,5 +1,7 @@
 /* Stage A+ maintenance controls; no strategy builder or backtest UI. */
-(() => {
+(async () => {
+  const user = await window.accountReady;
+  if (user.role !== 'admin') return;
   const el = id => document.getElementById(id);
   const root = '/api/admin/backfill-for-backtest';
   let busy = false;

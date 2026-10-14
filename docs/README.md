@@ -9,6 +9,7 @@
 | 產品定位、使用方式 | [README](../README.md)、[PRODUCT](../PRODUCT.md) | [專案狀態](PROJECT_STATUS.md) |
 | 開發環境、測試、金鑰設定及歷史回補指令 | [DEVELOPMENT.md](DEVELOPMENT.md) | `pyproject.toml`、`app/config.py`、`app/backfill.py` |
 | 目前做到了什麼、哪些仍有限制 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | 程式及相關測試 |
+| 邀請制帳號、權限／資料隔離、初始化與復原 | [ACCOUNTS.md](ACCOUNTS.md) | `scripts/accounts.py`、`tests/test_accounts.py`；部署狀態另見部署紀錄 |
 | 模組、資料流、DB／API／UI 邊界 | [ARCHITECTURE.md](ARCHITECTURE.md) | `app/`、`web/`、`tests/` |
 | 時點資料、OOS、版本、Portfolio 等研究契約 | [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md)、[AGENTS.md](../AGENTS.md) | 契約版本、相關 Stage 報告與測試 |
 | Railway 部署與最後驗證狀態 | [railway-deployment.md](railway-deployment.md)、[DEPLOY.md](../DEPLOY.md) | 線上健康與資料 freshness；紀錄是 dated snapshot |

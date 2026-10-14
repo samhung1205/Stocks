@@ -469,7 +469,7 @@ class ProvenanceTests(JobCase):
         self.assertEqual(view["warnings"][0]["code"], "LEGACY_JOB_NO_PROVENANCE")
         with self.assertRaises(DatabaseError), self.engine.begin() as c:   # guards are back
             c.exec_driver_sql("UPDATE optimization_jobs SET strategy_id=1 WHERE id=?", (job,))
-        self.assertEqual(query_one(self.engine.connect(), "SELECT COUNT(*) n FROM schema_migrations")["n"], 6)
+        self.assertEqual(query_one(self.engine.connect(), "SELECT COUNT(*) n FROM schema_migrations")["n"], 7)
 
 
 class RevisionTests(JobCase):

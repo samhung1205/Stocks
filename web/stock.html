@@ -28,7 +28,7 @@
       <option value="holding">持有中</option>
       <option value="__remove__">移出名單</option>
     </select>
-    <button id="btn-refresh" class="ghost">重新抓取資料</button>
+    <button id="btn-refresh" class="ghost" data-admin hidden>重新抓取資料</button>
   </div>
 
   <div class="stock-price-line" aria-label="最新收盤價格與日期">
@@ -210,7 +210,7 @@ document.getElementById("watch-tier").addEventListener("change", async e => {
 document.getElementById("btn-refresh").addEventListener("click", async e => {
   e.target.disabled = true; e.target.textContent = "抓取中…";
   try {
-    await api(`/api/stocks/${SID}/deep?force=true`);
+    await api(`/api/stocks/${SID}/deep`, {method: 'POST', body: {}});
     toast("資料已更新，重新載入頁面");
     location.reload();
   } catch (err) { toastError("資料未更新：" + err.message); e.target.disabled = false; e.target.textContent = "重新抓取資料"; }

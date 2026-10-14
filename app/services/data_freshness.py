@@ -284,8 +284,9 @@ def _classify_update_daily(result: dict, target: str) -> str:
 def _watchlist_deep_refresh():
     from app.services import deep_fetch
     try:
-        with engine.begin() as conn:
-            watch = query_all(conn, "SELECT stock_id FROM watchlist")
+        from app.identity import system_scope
+        with system_scope(), engine.begin() as conn:
+            watch = query_all(conn, "SELECT DISTINCT stock_id FROM watchlist")
         for r in watch:
             deep_fetch.ensure_deep(r["stock_id"])
     except Exception as exc:
@@ -545,3 +546,13 @@ def status() -> dict:
             "tracked_by_daily_auto_refresh": False,
         },
     }
+
+
+def public_status() -> dict:
+    """Authenticated member view: freshness facts, no runner logs/errors/config."""
+    full = status()
+    keys = ('freshness', 'expected_trading_day', 'latest_completed_quote_date',
+            'latest_institutional_date', 'latest_valuation_date',
+            'latest_market_summary_date', 'internal_hole_detected',
+            'internal_hole_check_source', 'current_status', 'research_benchmark')
+    return {key: full[key] for key in keys}

@@ -1,4 +1,4 @@
-"""Small, transactional, SQLite-only migrations. No destructive DDL.
+"""Transactional SQLite migrations; v7 rebuilds mutable watchlist/scores only.
 
 BEGIN IMMEDIATE serializes startup/migration writers; schema and ledger commit
 atomically. Existing databases and fresh databases take the same path.
@@ -154,6 +154,10 @@ def migrate(engine):
                 table, cols = INDEXES['idx_daily_refresh_target']
                 conn.exec_driver_sql(f'CREATE INDEX IF NOT EXISTS idx_daily_refresh_target ON {table}({cols})')
                 conn.exec_driver_sql("INSERT INTO schema_migrations VALUES(6,datetime('now'))")
+            if not conn.exec_driver_sql('SELECT 1 FROM schema_migrations WHERE version=7').first():
+                from app.db.ownership import migrate_ownership
+                migrate_ownership(conn)
+                conn.exec_driver_sql("INSERT INTO schema_migrations VALUES(7,datetime('now'))")
             for sql in TRIGGERS.values():
                 conn.exec_driver_sql(sql)
             conn.commit()

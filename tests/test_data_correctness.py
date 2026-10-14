@@ -110,7 +110,7 @@ class RepairMigrationTests(unittest.TestCase):
         migrate(self.engine)  # rerun: ledger says v2 applied, nothing changes
         with self.engine.connect() as c:
             rows = {r["stock_id"]: r for r in query_all(c, "SELECT * FROM corporate_actions")}
-            self.assertEqual(query_one(c, "SELECT COUNT(*) n FROM schema_migrations")["n"], 6)
+            self.assertEqual(query_one(c, "SELECT COUNT(*) n FROM schema_migrations")["n"], 7)
         self.assertEqual((rows["1101"]["kind"], rows["1101"]["cash_dividend"]), ("dividend_cash", 3.0))
         self.assertEqual(rows["1102"]["kind"], "dividend_stock")
         self.assertAlmostEqual(rows["1102"]["share_multiplier"], 1.05, places=6)

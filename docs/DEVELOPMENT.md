@@ -10,7 +10,9 @@
 
 ```bash
 uv sync
-uv run uvicorn app.main:app --port 8787
+# 停止舊服務並確認 DB 路徑；只初始化一次，腳本先備份既有 DB
+uv run python scripts/accounts.py init --username owner
+STOCKS_COOKIE_SECURE=0 uv run uvicorn app.main:app --port 8787
 ```
 
 瀏覽器開啟 <http://localhost:8787>。`app/config.py` 讀取行程環境變數及根目錄 `.env`；`STOCKS_DB_URL`／`STOCKS_DATA_DIR` 控制資料位置，必須在啟動前設為行程環境變數。全新本機資料庫的首次準備順序見 [使用手冊](../README.md)。私人 Railway 必須先匯入一致的既有 SQLite 備份，不能沿用本機建立空 DB 的流程，詳見 [部署紀錄](railway-deployment.md)。
@@ -21,7 +23,7 @@ Stage L1/L1.1 的自動更新只處理每日盤後輕量層資料，不寫盤中
 
 預設 `AUTO_REFRESH_CHECK_TIME=15:05`，但目前 `app/scheduler.py` 的 `CronTrigger` 依小時範圍和 15 分鐘格點落在 15:00、15:15…，沒有精確套用設定的分鐘。伺服器停止或電腦睡眠期間不執行排程；啟動時嘗試 catch-up，結果仍須由缺失交易日與 freshness 回應確認。每月 10–12 日另排程取得月營收。
 
-儀表板使用 `GET /api/admin/data-freshness` 顯示資料狀態。來源查詢與缺漏判定、有限重試、共用鎖及快取契約見 [L1 報告](history/stage-l1-daily-auto-refresh-report.md)、[L1.1 報告](history/stage-l1-1-daily-refresh-hardening-report.md) 及 [AGENTS.md](../AGENTS.md)。
+儀表板管理員使用 `GET /api/admin/data-freshness`，成員使用 `/api/market/freshness`（不含 runner logs/errors/config）。來源查詢與缺漏判定、有限重試、共用鎖及快取契約見 [L1 報告](history/stage-l1-daily-auto-refresh-report.md)、[L1.1 報告](history/stage-l1-1-daily-refresh-hardening-report.md) 及 [AGENTS.md](../AGENTS.md)。
 
 ### 設定載入順序與格式
 
@@ -30,8 +32,9 @@ Stage L1/L1.1 的自動更新只處理每日盤後輕量層資料，不寫盤中
 ## 測試 / 檢查指令
 
 ```bash
-# 主要驗證：離線單元測試（不打外部 API，可任意重跑）
-uv run python -m unittest discover -s tests -p 'test_*.py'
+# 先把 STOCKS_DB_URL / STOCKS_DATA_DIR 指到隔離 fixture 副本，勿用日常 DB
+# 舊單人服務測試明確選 basic；帳號測試自行切 accounts
+STOCKS_AUTH_MODE=basic uv run python -m unittest discover -s tests -p 'test_*.py'
 
 # 煙霧測試 — 實際打資料源 API 或跑真實研究流程，非 mock
 uv run python tests/smoke.py            # 全部
@@ -151,7 +154,7 @@ export AUTO_REFRESH_STATUS_CACHE_SECONDS=60      # Stage L1.1：/api/admin/data-
 - **三層資料策略**：全市場輕量層（每日全表、永遠在庫）→ 個股深度層（開頁/加觀察/篩中才抓，12 小時內視為新鮮）→ 清理層（非觀察名單 90 天未存取可釋放）
 - **行情可插拔**：`app/datasources/realtime_base.py` 定義介面；有 `FUGLE_API_KEY` 就自動用富果真即時，否則退回 MIS 快照（金鑰失效時也會自動降級，不會整個報價功能掛掉）
 - **Strategy Lab 是純函式計算核心 + 持久化／adapter 層**：`*_lab.py` 負責版本及 run 生命週期；`strategy/panel.py`、`walkforward/freeze.py`、`cross_strategy/data.py`、`portfolio/data.py` 是既有 DB 邊界，計算核心不碰 DB。新路由委派 services；現有直接 DB 例外見 [ARCHITECTURE.md](ARCHITECTURE.md) §2。
-- **私人部署**：Railway 單一 worker／replica、`/data` 持久磁碟、全站 HTTP Basic 保護；僅 GET/HEAD `/api/health` 公開。雲端啟動要求既有且有效的 SQLite，不會建立空白 DB；本機與雲端資料各自獨立。
+- **私人部署**：Railway 單一 worker／replica、`/data` 持久磁碟。新程式預設邀請制帳號／session／CSRF；啟動要求已初始化管理員與 v7 schema，雲端另外要求既有有效 SQLite。最後驗證的線上版本仍為 Basic；新帳號遷移未執行。操作、復原與上線順序見 [ACCOUNTS.md](ACCOUNTS.md)；本機與雲端資料各自獨立。
 
 ## 高階目錄結構
 
@@ -159,7 +162,8 @@ export AUTO_REFRESH_STATUS_CACHE_SECONDS=60      # Stage L1.1：/api/admin/data-
 app/
   api/routes.py            # 唯一的 REST 層（薄）
   config.py                # 環境變數（.env，自製 parser）
-  access.py                # 私人部署的全站 HTTP Basic 存取保護
+  access.py                # 帳號 session/CSRF/admin 存取保護；明確 legacy Basic
+  identity.py              # request/worker 身分（ContextVar）
   db/tables.py              # table/column 宣告；db/migrations.py 執行 DDL/triggers
   datasources/               # twse / tpex / finmind / mops / mis_snapshot / fugle
   services/

@@ -1,7 +1,8 @@
 """REST API 路由。前端（web/）全部透過這層取資料。"""
 import datetime as dt
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from sqlalchemy.exc import OperationalError
 
 from app.db import engine, query_all, query_one, upsert_many
 from app.db.tables import watchlist as watchlist_t
@@ -71,7 +72,16 @@ def stock_overview(stock_id: str, background: BackgroundTasks):
 @router.get("/stocks/{stock_id}/deep")
 def stock_deep(stock_id: str, force: bool = False):
     """同步觸發深度抓取（前端「重新整理資料」按鈕）。"""
+    if force:
+        _require_admin()
+        raise HTTPException(405, '強制更新請使用 POST')
     return deep_fetch.ensure_deep(stock_id, force=force)
+
+
+@router.post('/stocks/{stock_id}/deep')
+def stock_deep_refresh(stock_id: str):
+    _require_admin()
+    return deep_fetch.ensure_deep(stock_id, force=True)
 
 
 @router.get("/stocks/{stock_id}/kline")
@@ -174,8 +184,9 @@ def add_watch(stock_id: str, payload: dict, background: BackgroundTasks):
 
 @router.delete("/watchlist/{stock_id}")
 def remove_watch(stock_id: str):
+    from app.identity import owner_id
     with engine.begin() as conn:
-        conn.exec_driver_sql("DELETE FROM watchlist WHERE stock_id=?", (stock_id,))
+        conn.exec_driver_sql("DELETE FROM watchlist WHERE stock_id=? AND owner_user_id=?", (stock_id, owner_id()))
     return {"ok": True}
 
 
@@ -210,7 +221,7 @@ def create_plan(payload: dict):
 
 @router.post("/journal/plans/{plan_id}/status")
 def plan_status(plan_id: int, payload: dict):
-    journal.update_plan_status(plan_id, payload.get("status", "open"))
+    _lab(journal.update_plan_status, plan_id, payload.get("status", "open"))
     return {"ok": True}
 
 
@@ -224,7 +235,7 @@ def add_trade(payload: dict):
     for k in ("stock_id", "side", "shares", "price"):
         if not payload.get(k):
             raise HTTPException(400, f"缺少 {k}")
-    return {"id": journal.add_trade(payload)}
+    return {"id": _lab(journal.add_trade, payload)}
 
 
 @router.get("/journal/positions")
@@ -287,7 +298,7 @@ def finance_get_profile(profile_id: int):
 
 @router.delete("/finance/profiles/{profile_id}")
 def finance_delete_profile(profile_id: int):
-    return finance.delete_profile(profile_id)
+    return _lab(finance.delete_profile, profile_id)
 
 
 @router.post("/finance/refresh-etf")
@@ -432,6 +443,25 @@ def _lab(fn, *args, **kwargs):
         raise HTTPException(409, str(exc)) from exc
 
 
+def _require_admin():
+    if config.AUTH_MODE == 'accounts':
+        from app.services.accounts import _admin, AccountError
+        try:
+            _admin()
+        except AccountError as exc:
+            raise HTTPException(exc.status, exc.message) from None
+
+
+def _research(background, create, execute, *args, key='job_id', resume=False, **kwargs):
+    if config.AUTH_MODE == 'accounts':
+        from app.services.research_queue import submit
+        return _lab(submit, create, execute, *args, key=key, resume=resume, **kwargs)
+    queued = _lab(create, *args, **kwargs)
+    if queued.get('queued'):
+        background.add_task(execute, args[0] if resume else queued[key])
+    return queued
+
+
 @router.get('/strategy-lab/templates')
 def lab_templates():
     return lab.list_templates()
@@ -479,10 +509,7 @@ def lab_version(strategy_id: int, version_id: int):
 
 @router.post('/strategy-lab/strategies/{strategy_id}/runs')
 def lab_run_backtest(strategy_id: int, payload: dict, background: BackgroundTasks):
-    queued = _lab(lab.create_run, strategy_id, payload)
-    if queued['queued']:
-        background.add_task(lab.execute_run, queued['run_id'])
-    return queued
+    return _research(background, lab.create_run, lab.execute_run, strategy_id, payload, key='run_id')
 
 
 @router.get('/strategy-lab/strategies/{strategy_id}/runs')
@@ -521,10 +548,7 @@ def opt_catalog():
 
 @router.post('/strategy-lab/optimization/jobs')
 def opt_create(payload: dict, background: BackgroundTasks):
-    queued = _lab(opt.create_job, payload)
-    if queued['queued']:
-        background.add_task(opt.execute_job, queued['job_id'])
-    return queued
+    return _research(background, opt.create_job, opt.execute_job, payload)
 
 
 @router.get('/strategy-lab/optimization/jobs')
@@ -544,9 +568,7 @@ def opt_cancel(job_id: str):
 
 @router.post('/strategy-lab/optimization/jobs/{job_id}/resume')
 def opt_resume(job_id: str, background: BackgroundTasks, retry_failed: bool = False):
-    queued = _lab(opt.resume_job, job_id, retry_failed)
-    background.add_task(opt.execute_job, job_id)
-    return queued
+    return _research(background, opt.resume_job, opt.execute_job, job_id, retry_failed, resume=True)
 
 
 @router.get('/strategy-lab/optimization/jobs/{job_id}/results')
@@ -599,10 +621,7 @@ def walkforward_contracts():
 
 @router.post('/strategy-lab/walkforward/jobs')
 def wf_create(payload: dict, background: BackgroundTasks):
-    queued = _lab(wflab.create_job, payload)
-    if queued['queued']:
-        background.add_task(wflab.execute_job, queued['job_id'])
-    return queued
+    return _research(background, wflab.create_job, wflab.execute_job, payload)
 
 
 @router.get('/strategy-lab/walkforward/jobs')
@@ -622,9 +641,7 @@ def wf_cancel(job_id: str):
 
 @router.post('/strategy-lab/walkforward/jobs/{job_id}/resume')
 def wf_resume(job_id: str, background: BackgroundTasks):
-    queued = _lab(wflab.resume_job, job_id)
-    background.add_task(wflab.execute_job, job_id)
-    return queued
+    return _research(background, wflab.resume_job, wflab.execute_job, job_id, resume=True)
 
 
 @router.get('/strategy-lab/walkforward/jobs/{job_id}/result')
@@ -684,7 +701,7 @@ def cross_strategy_analyze(payload: dict):
     jobs = payload.get('jobs') or {}
     if not isinstance(jobs, dict) or not jobs:
         raise HTTPException(400, "payload.jobs must be a non-empty {strategy_key: job_id} map")
-    return xstrat.analyze(jobs)
+    return _lab(xstrat.analyze, jobs)
 
 
 # ── Strategy Portfolio Lab（Stage H1；邏輯在 services/portfolio_lab.py，backend only）──
@@ -733,10 +750,7 @@ def portfolio_version(portfolio_id: int, version_id: int):
 
 @router.post('/strategy-lab/portfolios/{portfolio_id}/research-runs')
 def portfolio_run_create(portfolio_id: int, payload: dict, background: BackgroundTasks):
-    queued = _lab(plab.create_research_run, portfolio_id, payload)
-    if queued['queued']:
-        background.add_task(plab.execute_research_run, queued['run_id'])
-    return queued
+    return _research(background, plab.create_research_run, plab.execute_research_run, portfolio_id, payload, key='run_id')
 
 
 @router.get('/strategy-lab/portfolios/{portfolio_id}/research-runs')
@@ -756,9 +770,128 @@ def portfolio_run_cancel(run_id: str):
 
 @router.post('/strategy-lab/portfolio-research-runs/{run_id}/resume')
 def portfolio_run_resume(run_id: str, background: BackgroundTasks):
-    queued = _lab(plab.resume_research_run, run_id)
-    background.add_task(plab.execute_research_run, run_id)
-    return queued
+    return _research(background, plab.resume_research_run, plab.execute_research_run, run_id, resume=True)
+
+
+# Account services own auth state; routes only validate/translate HTTP data.
+from starlette.responses import JSONResponse
+from app.services import accounts
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(max_length=40)
+    password: str = Field(max_length=128)
+
+
+class CompleteAccountRequest(BaseModel):
+    token: str = Field(max_length=200)
+    password: str = Field(min_length=12, max_length=128)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+class InviteRequest(BaseModel):
+    username: str = Field(max_length=40)
+    display_name: str = Field(max_length=80)
+
+
+class ActiveRequest(BaseModel):
+    active: bool
+
+
+def _account(fn, *args):
+    if config.AUTH_MODE != 'accounts':
+        raise HTTPException(404, '帳號模式尚未啟用')
+    try:
+        return fn(*args)
+    except accounts.AccountError as exc:
+        raise HTTPException(exc.status, exc.message) from None
+    except OperationalError:
+        raise HTTPException(503, '帳號系統尚未初始化，請聯絡管理員') from None
+
+
+def _clear_auth_cookies(response):
+    for name in ('stocks_session', 'stocks_csrf'):
+        response.delete_cookie(name, path='/', secure=config.AUTH_COOKIE_SECURE,
+                               httponly=name == 'stocks_session', samesite='lax')
+    return response
+
+
+@router.post('/auth/login')
+def auth_login(payload: LoginRequest, request: Request):
+    token, csrf = _account(accounts.login, payload.username, payload.password,
+                           request.client.host if request.client else 'unknown')
+    response = JSONResponse({'ok': True})
+    for name, value in (('stocks_session', token), ('stocks_csrf', csrf)):
+        response.set_cookie(name, value, max_age=config.SESSION_HOURS * 3600, path='/',
+                            secure=config.AUTH_COOKIE_SECURE, httponly=name == 'stocks_session', samesite='lax')
+    return response
+
+
+@router.get('/auth/me')
+def auth_me():
+    if config.AUTH_MODE == 'basic':
+        return {'auth_mode': 'basic', 'role': 'admin', 'display_name': '本機單人模式'}
+    return {'auth_mode': 'accounts', **_account(accounts.me)}
+
+
+@router.post('/auth/logout')
+def auth_logout(request: Request):
+    _account(accounts.logout, request.cookies.get('stocks_session'))
+    return _clear_auth_cookies(JSONResponse({'ok': True}))
+
+
+@router.post('/auth/password')
+def auth_password(payload: ChangePasswordRequest):
+    _account(accounts.change_password, payload.current_password, payload.new_password)
+    return _clear_auth_cookies(JSONResponse({'ok': True}))
+
+
+@router.post('/auth/complete')
+def auth_complete(payload: CompleteAccountRequest, request: Request):
+    _account(accounts.consume_token, payload.token, payload.password,
+             request.client.host if request.client else 'unknown')
+    return _clear_auth_cookies(JSONResponse({'ok': True}))
+
+
+@router.get('/admin/accounts')
+def account_list():
+    return _account(accounts.list_users)
+
+
+@router.post('/admin/accounts/invite')
+def account_invite(payload: InviteRequest):
+    return _account(accounts.invite, payload.username, payload.display_name)
+
+
+@router.post('/admin/accounts/{user_id}/reset')
+def account_reset(user_id: int):
+    return _account(accounts.issue_token, user_id, 'reset')
+
+
+@router.post('/admin/accounts/{user_id}/invite')
+def account_reinvite(user_id: int):
+    return _account(accounts.issue_token, user_id, 'invite')
+
+
+@router.delete('/admin/accounts/{user_id}/tokens')
+def account_revoke(user_id: int):
+    _account(accounts.revoke_tokens, user_id)
+    return {'ok': True}
+
+
+@router.patch('/admin/accounts/{user_id}')
+def account_active(user_id: int, payload: ActiveRequest):
+    _account(accounts.set_active, user_id, payload.active)
+    return {'ok': True}
+
+
+@router.get('/market/freshness')
+def market_freshness():
+    return data_freshness.public_status()
 
 
 @router.get('/strategy-lab/portfolio-research-runs/{run_id}/result')

@@ -16,7 +16,7 @@
     <div class="flex">
       <span><span id="stale-icon">⚠</span> <span id="stale-text"></span></span>
       <span class="spacer"></span>
-      <button id="btn-stale-update" class="ghost">立即更新今日行情</button>
+      <button id="btn-stale-update" class="ghost" data-admin hidden>立即更新今日行情</button>
     </div>
   </div>
 
@@ -43,7 +43,7 @@
     </div>
   </div>
 
-  <details class="dashboard-maintenance mt"><summary>資料維護與回補工作 <span id="maintenance-status" class="muted">必要時展開</span></summary><div class="card">
+  <details class="dashboard-maintenance mt" data-admin hidden><summary>資料維護與回補工作 <span id="maintenance-status" class="muted">必要時展開</span></summary><div class="card">
     <h2>資料維護</h2>
     <div class="flex">
       <button id="btn-sync" class="ghost">同步股票清單</button>
@@ -120,7 +120,8 @@ function renderFreshness(s) {
 
 async function loadFreshness() {
   try {
-    const s = await api("/api/admin/data-freshness");
+    const user = await window.accountReady;
+    const s = await api(user.role === 'admin' ? '/api/admin/data-freshness' : '/api/market/freshness');
     renderFreshness(s);
     return s;
   } catch (err) {
@@ -206,6 +207,7 @@ async function loadWatchlist() {
 }
 
 async function loadStatus() {
+  if ((await window.accountReady).role !== 'admin') return;
   const s = await api("/api/admin/status");
   document.getElementById("db-status").textContent =
     `股票 ${s.stocks} 檔｜行情 ${s.quote_days} 天（至 ${s.latest_date || "—"}）｜月營收 ${s.revenue_months} 個月｜深度資料 ${s.deep_stocks} 檔`;

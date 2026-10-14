@@ -40,7 +40,7 @@ class FoundationTests(unittest.TestCase):
         migrate(legacy)
         migrate(legacy)
         with legacy.connect() as c:
-            self.assertEqual(query_one(c, 'SELECT COUNT(*) n FROM schema_migrations')['n'], 6)  # v1 Stage A+, v2 Stage D+ action repair, v3 Stage F0 provenance, v4 Stage H1.5 portfolio cancel, v5 Stage I1 finance_targets pins, v6 Stage L1 daily_refresh_runs index
+            self.assertEqual(query_one(c, 'SELECT COUNT(*) n FROM schema_migrations')['n'], 7)  # v1 Stage A+, v2 Stage D+ action repair, v3 Stage F0 provenance, v4 Stage H1.5 portfolio cancel, v5 Stage I1 finance_targets pins, v6 Stage L1 daily_refresh_runs index, v7 account ownership
             r = query_one(c, 'SELECT * FROM financials')
             self.assertEqual((r['eps'], r['publish_date'], r['publish_source']), (8, '2026-05-15', 'assumed_deadline'))
             for name, (table, cols) in INDEXES.items():

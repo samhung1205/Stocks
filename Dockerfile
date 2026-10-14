@@ -9,4 +9,6 @@ COPY app ./app
 COPY web ./web
 COPY scripts/start-railway.sh ./scripts/start-railway.sh
 COPY scripts/railway-import-server.py ./scripts/railway-import-server.py
+COPY scripts/accounts.py ./scripts/accounts.py
+COPY scripts/backup_sqlite.py ./scripts/backup_sqlite.py
 CMD ["sh", "scripts/start-railway.sh"]

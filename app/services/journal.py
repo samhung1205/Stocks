@@ -110,6 +110,8 @@ def add_trade(payload: dict) -> int:
         "note": payload.get("note"),
     }
     with engine.begin() as conn:
+        if row['plan_id'] is not None and not query_one(conn, 'SELECT id FROM trade_plans WHERE id=:i', i=row['plan_id']):
+            raise LookupError('找不到交易計畫')
         result = conn.execute(insert(trades).values(**row))
         return result.inserted_primary_key[0]
 
@@ -210,6 +212,8 @@ def get_plan(plan_id: int) -> dict | None:
 
 def update_plan_status(plan_id: int, status: str) -> None:
     with engine.begin() as conn:
+        if not query_one(conn, 'SELECT id FROM trade_plans WHERE id=:i', i=plan_id):
+            raise LookupError('找不到交易計畫')
         conn.exec_driver_sql("UPDATE trade_plans SET status=? WHERE id=?",
                              (status, plan_id))
 

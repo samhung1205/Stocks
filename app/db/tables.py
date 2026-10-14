@@ -8,6 +8,7 @@
 from sqlalchemy import (
     Column, Float, Index, Integer, MetaData, String, Table, Text, UniqueConstraint,
 )
+from app.identity import owner_id
 
 metadata = MetaData()
 
@@ -581,4 +582,66 @@ portfolio_research_rebalances = Table(
     'portfolio_research_rebalances', metadata,
     Column('run_id', String, primary_key=True), Column('date', String, primary_key=True),
     Column('payload_json', Text, nullable=False),
+)
+
+# Ownership is metadata, not a change to immutable research definitions/results.
+# Child rows inherit ownership through their pinned parent, preserving existing ids.
+PRIVATE_ROOTS = (
+    'watchlist', 'scores', 'trade_plans', 'trades', 'finance_profiles',
+    'strategies', 'backtest_runs', 'optimization_jobs', 'wf_candidate_freezes',
+    'walkforward_jobs', 'strategy_portfolios', 'portfolio_research_runs',
+)
+PRIVATE_PARENTS = {
+    'finance_targets': ('finance_profiles', 'profile_id'),
+    'strategy_versions': ('strategies', 'strategy_id'),
+    'backtest_equity': ('backtest_runs', 'run_id'),
+    'backtest_trades': ('backtest_runs', 'run_id'),
+    'optimization_runs': ('optimization_jobs', 'job_id'),
+    'walkforward_folds': ('walkforward_jobs', 'job_id'),
+    'walkforward_equity': ('walkforward_jobs', 'job_id'),
+    'walkforward_trades': ('walkforward_jobs', 'job_id'),
+    'strategy_portfolio_versions': ('strategy_portfolios', 'portfolio_id'),
+    'strategy_portfolio_components': ('strategy_portfolio_versions', 'portfolio_version_id'),
+    'portfolio_research_equity': ('portfolio_research_runs', 'run_id'),
+    'portfolio_research_rebalances': ('portfolio_research_runs', 'run_id'),
+}
+for _name in PRIVATE_ROOTS:
+    metadata.tables[_name].append_column(Column(
+        'owner_user_id', Integer, nullable=False, default=owner_id, server_default='1',
+        primary_key=_name in ('watchlist', 'scores')))
+
+users = Table('users', metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('username', String, nullable=False, unique=True),
+    Column('display_name', String, nullable=False),
+    Column('password_hash', Text),
+    Column('role', String, nullable=False),
+    Column('active', Integer, nullable=False, default=0),
+    Column('created_at', String, nullable=False),
+)
+auth_sessions = Table('auth_sessions', metadata,
+    Column('token_hash', String, primary_key=True),
+    Column('user_id', Integer, nullable=False),
+    Column('csrf_hash', String, nullable=False),
+    Column('created_at', Float, nullable=False),
+    Column('expires_at', Float, nullable=False),
+    Column('last_seen', Float, nullable=False),
+)
+account_tokens = Table('account_tokens', metadata,
+    Column('token_hash', String, primary_key=True),
+    Column('kind', String, nullable=False),
+    Column('user_id', Integer, nullable=False),
+    Column('created_by', Integer, nullable=False),
+    Column('expires_at', Float, nullable=False),
+    Column('used_at', Float),
+)
+auth_attempts = Table('auth_attempts', metadata,
+    Column('bucket', String, primary_key=True),
+    Column('count', Integer, nullable=False),
+    Column('reset_at', Float, nullable=False),
+)
+account_audit = Table('account_audit', metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('actor_id', Integer), Column('subject_id', Integer),
+    Column('action', String, nullable=False), Column('created_at', Float, nullable=False),
 )

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>登入 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css"><link rel="stylesheet" href="css/account.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script src="js/account.js" defer></script>
+</head>
+<body data-account-page="login">
+<main class="login-desk">
+  <section class="login-intro" aria-labelledby="product-title">
+    <a class="account-brand" href="login.html">台股分析</a>
+    <h1 id="product-title">回到你的<br>研究卷宗。</h1>
+    <p>市場資料共同參考，投資決策各自記錄。</p>
+    <dl class="account-boundaries">
+      <div><dt>共同參考</dt><dd>市場行情、公司財報與研究工具</dd></div>
+      <div><dt>私人工作區</dt><dd>財務規劃、持股、觀察名單與研究結果</dd></div>
+    </dl>
+    <p class="account-footnote">此為邀請制工作區。需要帳號，請聯絡管理員。</p>
+  </section>
+  <section class="login-form-section" aria-labelledby="form-title">
+    <h2 id="form-title">登入工作區</h2>
+    <p id="form-description" class="muted">使用你的個人帳號繼續。</p>
+    <form id="login-form">
+      <label for="username">帳號</label><input id="username" name="username" autocomplete="username" required maxlength="40" autofocus>
+      <label for="password">密碼</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="128">
+      <button type="submit">登入</button>
+      <p class="muted">忘記密碼？請管理員產生一次性重設連結。</p>
+    </form>
+    <form id="complete-form" hidden>
+      <label for="new-password">設定新密碼</label><input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required aria-describedby="password-help">
+      <p id="password-help" class="muted">12–128 個字元，可使用空白與中文；建議使用容易記住的長句。</p>
+      <label for="confirm-password">再次輸入密碼</label><input id="confirm-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+      <button type="submit">儲存密碼</button>
+    </form>
+    <p id="account-message" class="account-message" role="status" aria-live="polite" tabindex="-1"></p>
+  </section>
+</main>
+</body>
+</html>

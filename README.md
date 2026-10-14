@@ -10,14 +10,16 @@
 
 ### 私人雲端版
 
-開啟 [Railway 網站](https://stocks-production-eeb3.up.railway.app)，輸入管理者提供的帳號與密碼。這是共用帳密、共用資料的私人網站，沒有個別會員帳號或使用者資料隔離。
+開啟 [Railway 網站](https://stocks-production-eeb3.up.railway.app)。最後驗證的雲端版本仍使用共用 HTTP Basic 帳密及資料；**本次帳號系統尚未遷移／部署到 Railway**，不能先把該共用帳密交給朋友使用。
+
+新程式採邀請制：管理員在「帳號與存取」建立邀請，朋友自行設定密碼。每人的財務規劃、持股、筆記及策略研究分開，行情共用；朋友不能操作全站資料維護。修改密碼與登出也在「帳號與存取」；忘記密碼請向管理員索取重設連結。初始化、復原與上線步驟見 [帳號說明](docs/ACCOUNTS.md)。
 
 ### 本機版
 
-已準備好專案環境時，在專案資料夾執行：
+先依 [帳號說明](docs/ACCOUNTS.md) 停止舊服務、備份並初始化管理員一次；已準備好環境及帳號後，在專案資料夾執行：
 
 ```bash
-uv run uvicorn app.main:app --port 8787
+STOCKS_COOKIE_SECURE=0 uv run uvicorn app.main:app --port 8787
 ```
 
 再用瀏覽器開啟 <http://localhost:8787>。首次安裝或環境設定請參考 [開發文件](docs/DEVELOPMENT.md)。本機服務需要保持執行，關閉終端機或電腦睡眠會中斷背景工作與排程。

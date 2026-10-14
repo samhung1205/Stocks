@@ -13,9 +13,9 @@ const NAV_CARET = `<svg class="nav-caret" viewBox="0 0 10 6" width="10" height="
 function renderNav() {
   const here = location.pathname.split("/").pop() || "index.html";
   const stage = here === "strategy.html" ? (qs("optimization") ? "參數穩健性" : qs("walkforward") ? "樣本外驗證" : "策略實驗室") : "";
-  const current = here === "stock.html" ? "個股研究" :
+  const current = here === "account.html" ? "帳號與存取" : here === "stock.html" ? "個股研究" :
     NAV_GROUPS.flatMap(group => group[1]).find(([href, label]) => href.split("?")[0] === here && (!stage || label === stage))?.[1] || "儀表板";
-  const groupName = here === "stock.html" ? "市場研究" : NAV_GROUPS.find(([, links]) => links.some(([, label]) => label === current))?.[0] || "市場研究";
+  const groupName = here === "account.html" ? "個人設定" : here === "stock.html" ? "市場研究" : NAV_GROUPS.find(([, links]) => links.some(([, label]) => label === current))?.[0] || "市場研究";
   const nav = document.createElement("nav");
   nav.className = "topbar";
   nav.setAttribute("aria-label", "全站導覽");
@@ -112,11 +112,17 @@ function renderNav() {
 }
 
 async function api(path, opts = {}) {
+  opts = {...opts, headers: {...(opts.headers || {})}};
+  if (!['GET', 'HEAD', 'OPTIONS'].includes((opts.method || 'GET').toUpperCase())) {
+    const csrf = document.cookie.split('; ').find(s => s.startsWith('stocks_csrf='))?.slice(12);
+    if (csrf) opts.headers['X-CSRF-Token'] = csrf;
+  }
   if (opts.body && typeof opts.body !== "string") {
     opts.body = JSON.stringify(opts.body);
     opts.headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   }
   const resp = await fetch(path, opts);
+  if (resp.status === 401) location.replace('/login.html');
   if (!resp.ok) {
     let msg = resp.statusText;
     try { msg = (await resp.json()).detail || msg; } catch {}
@@ -245,3 +251,13 @@ function qs(name) {
 }
 
 renderNav();
+
+window.accountReady = api('/api/auth/me').then(user => {
+  document.querySelectorAll('[data-admin]').forEach(el => { el.hidden = user.role !== 'admin'; });
+  const link = document.createElement('a'); link.href = '/account.html'; link.className = 'account-nav';
+  link.textContent = '帳號'; link.setAttribute('aria-label', `帳號與存取：${user.display_name}`);
+  if (location.pathname.endsWith('/account.html')) link.setAttribute('aria-current', 'page');
+  document.querySelector('.topbar')?.append(link);
+  return user;
+});
+window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });

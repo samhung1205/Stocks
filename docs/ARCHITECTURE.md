@@ -1,13 +1,14 @@
 # Architecture Reference
 
-Repo-level architecture map for the Stage L1/L1.1 working tree. Instruction/DB-boundary documentation was checked against source on 2026-10-13; the private Railway deployment was last verified on 2026-10-06. This is the "what exists and how it's wired together" document; contract details live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md), current scope in [PROJECT_STATUS.md](PROJECT_STATUS.md), and delivery history in `docs/history/stage-*.md`. If this file and the code disagree, fix the documentation in the same change that caused the drift.
+Repo-level architecture map for Stage L1/L1.1 plus invitation-only accounts (2026-10-14 source). Account migration and rollout have not been performed on the daily/production DB; last verified Railway state is tracked separately in [railway-deployment.md](railway-deployment.md). Contract details live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md), current scope in [PROJECT_STATUS.md](PROJECT_STATUS.md), and delivery history in `docs/history/stage-*.md`. If this file and the code disagree, fix the documentation in the same change that caused the drift.
 
 ## 1. Major modules
 
 ```
 app/
   main.py                 FastAPI app + lifespan (cloud DB guard, recovery, scheduler)
-  access.py               shared private-access middleware (HTTP Basic)
+  access.py               account/session/CSRF/admin middleware; explicit legacy Basic mode
+  identity.py             trusted request/worker ContextVar identity + restricted system scope
   config.py                env vars (.env via a minimal self-written parser, no python-dotenv)
   scheduler.py              weekday bounded-poll daily auto-refresh tick (Stage L1), monthly
                               revenue (day 10-12), Sunday 03:00 deep-data cleanup
@@ -16,8 +17,11 @@ app/
     tables.py                table/column declarations (SQLAlchemy Core)
     __init__.py               engine, upsert_many(), query_all/query_one
     migrations.py             additive, transactional SQLite migrations + immutability triggers
+    ownership.py              fixed private-read scopes + owner-preserving write triggers (v7)
   datasources/               twse / tpex / finmind / mops / mis_snapshot / fugle (+ base.py http client)
   services/
+    accounts.py                                  invitations, Argon2id, sessions, assisted recovery
+    research_queue.py                            one FIFO worker + per-user quota/identity capture
     market_daily.py, deep_fetch.py, stock_view.py, scoring.py,
     screener.py, alerts.py, journal.py             fundamental-analysis layer
     data_freshness.py                              Stage L1: daily auto-refresh lifecycle + freshness
@@ -42,11 +46,13 @@ docs/                       current references + deployment record; history/ for
 ## 2. DB / service / UI boundaries
 
 - **Private Railway deployment**: `Dockerfile` installs the exact `uv.lock` dependencies; `.railway/railway.ts` uses the official IaC SDK to configure `/api/health`, one Singapore replica, no sleep and a persistent `/data` volume. Its npm package is infrastructure tooling only, not a frontend build step; install it with `npm ci --prefix .railway` before `railway config plan` / `apply`. `scripts/start-railway.sh` runs one Uvicorn worker. `STOCKS_DATA_DIR` / `STOCKS_DB_URL` point at that volume. `app/main.py` refuses a missing/invalid existing SQLite file in Railway before migrations/recovery start. `scripts/backup_sqlite.py` uses SQLite's backup API and verifies integrity for the initial transfer; backups and `.env` never enter the deployment archive/image. New Railway services cannot use the deprecated `railway.json` / `railway.toml` format (official docs verified 2026-10-05).
-- **Cloud access boundary**: `app/access.py` wraps all pages, REST endpoints and API docs with HTTP Basic authentication. Railway presence (`RAILWAY_ENVIRONMENT_ID`) always enables it; local usage stays open unless `STOCKS_REQUIRE_AUTH` or either credential is configured. Missing/partial credentials return 503; invalid credentials return 401. Authenticated responses have `Cache-Control: no-store`; cross-site browser writes return 403. Only GET/HEAD `/api/health` bypasses authentication and returns non-sensitive database readiness. This is a shared private account, not per-user isolation: anyone given credentials can see and modify the same data. Configure credentials directly in Railway, not in Git/files/chat.
+- **Account boundary**: default `STOCKS_AUTH_MODE=accounts` applies locally and on Railway. `AccountAccessMiddleware` validates opaque server-side sessions and active accounts per request, enforces admin-only routes, and requires a session-bound CSRF header plus same-origin checks for writes. Minimal login assets, health and login/token-completion POSTs are public; other pages/APIs require login. Sessions are hashed in SQLite; passwords use Argon2id. Cookie flags: HttpOnly session, Secure, SameSite=Lax; responses no-store/no-referrer. Explicit `basic` mode retains the old single-user behavior but supplies no multi-user isolation guarantee. There is no fallback from failed accounts initialization. See [ACCOUNTS.md](ACCOUNTS.md) for exact lifetimes, initialization, recovery and rollout.
+- **Ownership boundary**: v7 adds owner metadata to 12 private root tables; 12 descendant tables inherit scope through existing parent ids. `query_all/query_one` prepend fixed CTEs that shadow private relations with the actor's rows (joins, subqueries, cache lookups included). All private SELECTs must use these helpers; direct Core/driver SELECT and schema-qualified access are reserved for the boundary/migrations, never services. DB triggers separately reject foreign/private INSERT/UPDATE/DELETE and owner changes. Admin has no private-read bypass. `system_scope()` is limited to trusted operator/startup recovery and shared-data maintenance. Existing immutable research rows retain their original fields/ids; only mutable watchlist/scores are rebuilt for per-user composite PKs.
+- **Research dispatch**: account-mode top-level Backtest/Optimization/Walk Forward/Portfolio create/resume requests pass through `research_queue.submit()`: one process-local FIFO worker, one outstanding request per account, captured identity restored in the worker, and active-user check before execution. Internal Walk Forward optimization stays synchronous in that worker. Lab atomic claims and restart/cancel/resume contracts remain unchanged. Pure calculations do not import auth. Legacy mode retains BackgroundTasks.
 - **Initial volume import**: Railway file operations need an active deployment. With `STOCKS_IMPORT_MODE=1`, `scripts/start-railway.sh` starts the separate `scripts/railway-import-server.py` health-only process. It returns `status: importing` at `/api/health`, rejects other GET requests, and never imports the app, opens SQLite, starts jobs or serves files. After the snapshot has uploaded and been verified, set import mode off and start the normal app. An import-mode health response never establishes application readiness.
 - **Cloud scheduler timezone**: Railway sets both `TZ` and `AUTO_REFRESH_TIMEZONE` to `Asia/Taipei`. The existing `CronTrigger` instances default to the process-local timezone, so setting only the scheduler timezone would leave those triggers on the container's UTC clock. Verify the live triggers and next-run dates after deployment.
 
-- **DB layer**: `app/db/tables.py` declares tables/columns; `app/db/migrations.py` applies additive DDL and immutability triggers using that metadata. `app.config.DB_URL` / `DATA_DIR` centralize environment overrides and local defaults. Market-data writes use `upsert_many()` (partial-column-safe upsert). Query helpers/raw SQL and SQLAlchemy Core insert/update statements are used; there is no ORM query layer.
+- **DB layer**: `app/db/tables.py` declares tables/columns; `app/db/migrations.py` applies transactional DDL and immutability triggers using that metadata (v7 rebuilds only mutable watchlist/scores). `app.config.DB_URL` / `DATA_DIR` centralize environment overrides and local defaults. Market-data writes use `upsert_many()` (partial-column-safe upsert). Private writes derive owner from trusted identity; private reads use the ownership boundary above. There is no ORM query layer.
 - **Service layer**: the four `*_lab.py` modules own research persistence, versioning and run lifecycle. Their calculation cores are pure and tested with synthetic fixtures, but their packages are not entirely DB-free: `strategy/panel.py` reads DB facts into the PIT panel; `walkforward/freeze.py` reads training evidence and persists/opens immutable freezes; `cross_strategy/data.py` reads Walk Forward results through public accessors plus current sector metadata; `portfolio/data.py` loads exact-sleeve inputs. Keep DB access within those existing boundaries; calculation modules must not acquire DB dependencies. Cross-strategy analysis does not write or duplicate research data.
 - **API layer**: `app/api/routes.py` is the normal-app REST entry point. New business logic belongs in services; routes should parse parameters, delegate and map errors. Existing stock search, realtime lookup, watchlist CRUD and admin-status routes contain direct DB access; these are existing exceptions, not a reason to add more. Health checks also query DB readiness directly. The shared `_lab()` helper maps `LookupError → 404`, `ValueError → 400`, `RuntimeError → 409` for Strategy Lab route families.
 - **UI layer**: native JS, no framework. `web/js/common.js` provides the nav bar, an `api()` fetch wrapper, formatting helpers, and shared ECharts styling. `strategy.html` is a single page whose JS (`strategy.js` + `optimization.js` + `walkforward.js`) renders Strategy Lab, Optimization and Walk Forward as tabs/states of one app — there are no separate `optimization.html` / `walkforward.html` pages. Cross-Strategy analysis remains API-only. `portfolio.html` + `web/js/portfolio.js` provide the Strategy Portfolio list, builder, versioned detail, research/result and rebalance/holdings UI; `web/js/charts.js` renders compact portfolio charts from the existing read API. `finance.html` + `web/js/finance.js` retain the seven-step Planner and now select ETF, Manual, or a pinned Strategy Portfolio source; the latter reads `/api/finance/portfolio-evidence` and requires a separate user confirmation before setting a planning return.
@@ -232,6 +238,7 @@ See `docs/history/stage-l1-daily-auto-refresh-report.md` (original design) and `
 
 | Layer | Tables |
 |---|---|
+| Accounts | `users`, `auth_sessions`, `account_tokens`, `auth_attempts`, `account_audit` |
 | Light (whole-market, daily) | `stocks`, `daily_quotes`, `valuations`, `institutional_daily`, `market_summary`, `month_revenue` |
 | Deep (on-demand, per-stock) | `financials`, `margin_daily`, `dividends`, `deep_fetch_log` |
 | Usage | `watchlist`, `scores`, `trade_plans`, `trades` |
@@ -251,6 +258,8 @@ All routes are under `/api`. See `app/api/routes.py` for exact signatures.
 
 | Prefix | Area |
 |---|---|
+| `/auth` | Login/logout/me/password, single-use invite/reset completion; no public registration |
+| `/admin/accounts` | Admin-only invitation, reissue/reset/revoke, member enable/disable |
 | `/market`, `/stocks`, `/realtime` | Dashboard, stock search, quotes |
 | `/stocks/{id}/...` | Stock detail: kline, revenue, financials, chips, valuation, technical, alerts, score |
 | `/screener` | Whole-market screener presets + run |
@@ -263,3 +272,5 @@ All routes are under `/api`. See `app/api/routes.py` for exact signatures.
 | `/strategy-lab/walkforward/...` | Walk Forward jobs, folds, independent OOS, stitched |
 | `/strategy-lab/cross-strategy/analyze` | Cross-strategy descriptive analysis (POST only, read-only) |
 | `/strategy-lab/portfolios`, `/strategy-lab/portfolio-research-runs` | Strategy Portfolio CRUD/versioning/clone/archive + research runs (incl. `.../research-runs/{run_id}/cancel`\|`/resume`) |
+
+`GET /api/market/freshness` is a member-safe subset without runner logs/errors/config. Forced stock fetching is admin-only `POST /api/stocks/{stock_id}/deep`; GET `force=true` no longer performs it. `web/login.html` and `web/account.html` provide account flows; `common.js` adds the account nav, attaches CSRF to writes and redirects expired sessions to login. Hiding admin UI supplements backend enforcement.

@@ -198,7 +198,7 @@ def save_profile(payload: dict) -> dict:
     """建立或更新一份具名情境（含標的設定）。"""
     now = dt.datetime.now().isoformat(timespec="seconds")
     cols = {c.name for c in finance_profiles.columns}
-    row = {k: v for k, v in payload.items() if k in cols and k != "id"}
+    row = {k: v for k, v in payload.items() if k in cols and k not in ("id", "owner_user_id")}
     for f in JSON_FIELDS:
         if f in payload:
             row[f] = json.dumps(payload[f], ensure_ascii=False)
@@ -216,6 +216,8 @@ def save_profile(payload: dict) -> dict:
     pid = payload.get("id")
     with engine.begin() as conn:
         if pid:
+            if not query_one(conn, 'SELECT id FROM finance_profiles WHERE id=:i', i=int(pid)):
+                raise LookupError('找不到情境')
             row["id"] = int(pid)
             upsert_many(conn, finance_profiles, [row])
         else:
@@ -229,6 +231,8 @@ def save_profile(payload: dict) -> dict:
 
 def delete_profile(profile_id: int) -> dict:
     with engine.begin() as conn:
+        if not query_one(conn, 'SELECT id FROM finance_profiles WHERE id=:i', i=profile_id):
+            raise LookupError('找不到情境')
         conn.exec_driver_sql("DELETE FROM finance_targets WHERE profile_id=?",
                              (profile_id,))
         conn.exec_driver_sql("DELETE FROM finance_profiles WHERE id=?", (profile_id,))

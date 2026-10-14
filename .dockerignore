@@ -8,6 +8,8 @@
 !scripts/
 !scripts/start-railway.sh
 !scripts/railway-import-server.py
+!scripts/accounts.py
+!scripts/backup_sqlite.py
 **/__pycache__/
 **/*.pyc
 **/.DS_Store

@@ -73,3 +73,84 @@ class PrivateAccessMiddleware:
                 return await JSONResponse({"detail": "Cross-site writes are forbidden"}, 403)(
                     scope, receive, private_send)
         return await self.app(scope, receive, private_send)
+
+
+class AccountAccessMiddleware:
+    """Session authentication + CSRF + admin gate for invitation-only mode.
+
+    No shared-Basic or unauthenticated-local fallback exists in accounts mode.
+    This is pure ASGI so the actor remains set through background task dispatch.
+    """
+    PUBLIC_FILES = {'/login.html', '/css/app.css', '/css/account.css', '/js/account.js', '/favicon.svg'}
+    PUBLIC_POSTS = {'/api/auth/login', '/api/auth/complete'}
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        from http.cookies import SimpleCookie, CookieError
+        from starlette.responses import RedirectResponse
+        from sqlalchemy.exc import SQLAlchemyError
+        from app import identity
+        from app.services import accounts
+
+        if scope['type'] != 'http':
+            if scope['type'] == 'websocket':
+                return await send({'type': 'websocket.close', 'code': 1008})
+            return await self.app(scope, receive, send)
+        path, method = scope['path'], scope['method']
+        headers = dict(scope['headers'])
+
+        async def private_send(message):
+            if message['type'] == 'http.response.start':
+                items = [(k, v) for k, v in message.get('headers', []) if k.lower() != b'cache-control']
+                items += [(b'cache-control', b'no-store'), (b'vary', b'Cookie'),
+                          (b'referrer-policy', b'no-referrer'), (b'x-content-type-options', b'nosniff')]
+                message = {**message, 'headers': items}
+            await send(message)
+
+        async def error(code, detail):
+            return await JSONResponse({'detail': detail}, code)(scope, receive, private_send)
+
+        if method in ('GET', 'HEAD') and (path == '/api/health' or path in self.PUBLIC_FILES):
+            return await self.app(scope, receive, private_send)
+        if method not in ('GET', 'HEAD', 'OPTIONS'):
+            if headers.get(b'sec-fetch-site') == b'cross-site':
+                return await error(403, '不允許跨站操作')
+            origin = headers.get(b'origin')
+            if origin:
+                try:
+                    parsed = urlsplit(origin.decode('latin-1'))
+                    if parsed.scheme not in ('http', 'https') or parsed.netloc.lower() != headers.get(b'host', b'').decode('latin-1').lower():
+                        return await error(403, '不允許跨站操作')
+                except ValueError:
+                    return await error(403, '不允許跨站操作')
+            if path in self.PUBLIC_POSTS and not headers.get(b'content-type', b'').lower().startswith(b'application/json'):
+                return await error(415, '請使用 JSON 表單')
+        if method == 'POST' and path in self.PUBLIC_POSTS:
+            return await self.app(scope, receive, private_send)
+        cookies = SimpleCookie()
+        try:
+            cookies.load(headers.get(b'cookie', b'').decode('latin-1'))
+        except CookieError:
+            return await error(401, '請重新登入')
+        cookie = cookies.get('stocks_session')
+        try:
+            session = accounts.authenticate(cookie.value if cookie else None)
+        except SQLAlchemyError:
+            return await error(503, '帳號系統尚未初始化，請聯絡管理員')
+        if not session:
+            if method in ('GET', 'HEAD') and not path.startswith('/api/') and path not in ('/openapi.json', '/docs', '/redoc'):
+                return await RedirectResponse('/login.html', status_code=303)(scope, receive, private_send)
+            return await error(401, '請先登入或重新登入')
+        actor, csrf_hash = session
+        admin_only = (path.startswith('/api/admin/') or path == '/api/finance/refresh-etf'
+                      or path in ('/docs', '/redoc', '/openapi.json'))
+        if actor.role != 'admin' and admin_only:
+            return await error(403, '需要管理員權限')
+        if method not in ('GET', 'HEAD', 'OPTIONS'):
+            supplied = headers.get(b'x-csrf-token', b'').decode('latin-1')
+            if not supplied or len(supplied) > 200 or not secrets.compare_digest(hashlib.sha256(supplied.encode()).hexdigest(), csrf_hash):
+                return await error(403, '操作驗證已失效，請重新登入')
+        with identity.actor_scope(actor):
+            return await self.app(scope, receive, private_send)

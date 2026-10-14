@@ -21,8 +21,10 @@ def _revenue_job():
 
 def _cleanup_job():
     from app.services import deep_fetch
+    from app.identity import system_scope
     try:
-        deep_fetch.cleanup()
+        with system_scope():
+            deep_fetch.cleanup()
     except Exception as e:
         log.error("cleanup failed: %s", e)
 

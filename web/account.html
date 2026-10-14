@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>帳號與存取 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css"><link rel="stylesheet" href="css/account.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body data-account-page="account">
+<main class="account-main">
+  <header class="desk-page-head"><div><h1>帳號與存取</h1><p class="muted">管理登入方式與工作區成員。</p></div><button id="logout-button" class="ghost" type="button">登出</button></header>
+  <p id="account-identity" class="account-identity">正在讀取帳號…</p>
+  <p id="account-message" class="account-message" role="status" aria-live="polite" tabindex="-1"></p>
+  <section class="account-section" aria-labelledby="password-title">
+    <div><h2 id="password-title">修改密碼</h2><p class="muted">儲存後會登出所有裝置，請使用新密碼重新登入。</p></div>
+    <form id="change-password-form" class="account-password-form">
+      <label for="current-password">目前密碼</label><input id="current-password" type="password" autocomplete="current-password" required maxlength="128">
+      <label for="new-password">新密碼</label><input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required aria-describedby="password-help">
+      <p id="password-help" class="muted">12–128 個字元，可使用空白與中文。</p>
+      <label for="confirm-password">再次輸入新密碼</label><input id="confirm-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+      <button type="submit">儲存並重新登入</button>
+    </form>
+  </section>
+  <section id="member-management" class="account-section" aria-labelledby="members-title" hidden>
+    <div><h2 id="members-title">工作區成員</h2><p class="muted">邀請連結有效 48 小時；重設連結有效 30 分鐘。請透過私人管道傳送。</p></div>
+    <form id="invite-form" class="account-invite-form">
+      <div><label for="invite-name">顯示名稱</label><input id="invite-name" autocomplete="off" maxlength="80" required></div>
+      <div><label for="invite-username">帳號</label><input id="invite-username" autocomplete="off" minlength="3" maxlength="40" pattern="[a-zA-Z0-9][a-zA-Z0-9_.\-]{2,39}" required aria-describedby="username-help"><p id="username-help" class="muted">3–40 個英文字母、數字、底線、點或連字號，首字須為英文字母或數字。</p></div>
+      <button type="submit">建立邀請</button>
+    </form>
+    <div id="issued-link" class="issued-link" hidden><label for="token-link">一次性連結（離開頁面後不再顯示）</label><input id="token-link" readonly><button id="copy-link" class="ghost" type="button">複製連結</button><p id="token-expiry" class="muted"></p></div>
+    <div class="account-table-scroll"><table><caption class="sr-only">帳號狀態與可用操作</caption><thead><tr><th scope="col">成員</th><th scope="col">權限</th><th scope="col">狀態</th><th scope="col">操作</th></tr></thead><tbody id="members-body"></tbody></table></div>
+    <p class="muted">管理功能不會列出成員的財務規劃或私人研究。主機與資料庫持有人仍具有底層資料存取能力。</p>
+  </section>
+</main>
+<script src="js/common.js"></script><script src="js/account.js"></script>
+</body>
+</html>

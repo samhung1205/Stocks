@@ -1,6 +1,6 @@
 # Project Status
 
-Working-tree status baseline as of 2026-10-06; instruction/DB-boundary documentation audit added on 2026-10-13. This later audit did not revalidate live deployment or real-job results. The v1.0.0 tag is the Stage K2 checkpoint; Stage L1/L1.1 and the Railway deployment are later working-tree work, not part of that tagged release. This file states what is implemented and what remains open. The documentation map is [README.md](README.md); dated stage reports live in `docs/history/`, and research semantics live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md).
+Working-tree baseline through 2026-10-06; instruction/DB-boundary audit on 2026-10-13 and invitation-only account implementation on 2026-10-14. Account migration and rollout have not been performed on daily/production data. These later changes do not establish current live deployment/data readiness. The v1.0.0 tag is the Stage K2 checkpoint; later work is not part of that release. The documentation map is [README.md](README.md); dated stage reports live in `docs/history/`, and research semantics live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md).
 
 ## Completed stages (A → L1.1)
 
@@ -37,6 +37,7 @@ Each stage's own report (`docs/history/stage-<n>-*.md`) is the detailed, point-i
 
 ## Currently usable features
 
+- **Invitation-only accounts (2026-10-14 source, rollout pending)**: login/logout, password change, administrator-assisted reset, member invitations/reissue/revoke/disable, admin-only maintenance, and per-user watchlists/scores/notes/journal/Planner/all research with shared market facts. Native login/account pages, Argon2id, server sessions, CSRF, DB ownership checks and a single FIFO research worker. Fresh/legacy DB initialization requires the explicit backup-first operator CLI; old data belongs to owner id=1. No public registration or email service. See [ACCOUNTS.md](ACCOUNTS.md) for operation and test scope.
 - **Fundamental analysis platform**: dashboard, stock detail (kline, revenue, financials, chips, valuation, technical, scorecard, alerts), whole-market screener, tiered watchlist with near-real-time quotes, trade journal, financial/ETF planning (`finance.html`) — all with a working UI.
 - **Strategy Lab** (`strategy.html`): create/version/run any of the five strategy templates against the real local dataset; view equity curves and trades.
 - **Optimization**: grid search + robustness-region detection over a strategy's training window, from the same UI.
@@ -63,6 +64,7 @@ Each stage's own report (`docs/history/stage-<n>-*.md`) is the detailed, point-i
 
 ## Not yet started / not in scope so far
 
+- **Account production rollout**: real DB backup/migration, owner password entry, HTTPS session validation and friend invitations remain pending. Self-service email recovery, MFA and public registration are outside this small invited-group implementation.
 - **H2+**: real-data validation of `inverse_volatility` once evidence improves; any decision about whether/how to implement `risk_parity`/`minimum_variance`/`correlation_aware`; rebalance frequencies beyond monthly; `max_sector_weight` enforcement (would need a point-in-time sector taxonomy first).
 - **Financial Plan versioning**: `finance_profiles`/`finance_targets` remain the pre-existing mutable "current settings" model (in-place overwrite on save) — a known, pre-Stage-I1 gap Stage I1 did not attempt to fix. Only the pinned Strategy Portfolio ids inside a target row are immutable-by-reference (they point at data that itself never changes).
 - **Further polish**: long-running cloud research workload and continued backup/monitoring have not been verified end to end; broader mobile improvements remain optional future work. Initial private deployment hardening is complete, as recorded above.

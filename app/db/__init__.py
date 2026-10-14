@@ -1,9 +1,14 @@
-"""SQLite（WAL）＋ SQLAlchemy Core。日後上雲換 DB_URL 即可移植到 Postgres。"""
+"""SQLite（WAL）＋ SQLAlchemy Core；資料位置由 DB_URL 控制。
+
+Ownership scopes/write guards and upserts currently target SQLite. A future
+Postgres adapter must preserve those boundaries, not merely change the URL.
+"""
 from sqlalchemy import create_engine, event, text, case
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.config import DB_URL
 from app.db.tables import metadata
+from app.db import ownership
 
 engine = create_engine(DB_URL, future=True)
 
@@ -37,6 +42,9 @@ def upsert_many(conn, table, rows: list[dict]) -> int:
     """
     if not rows:
         return 0
+    if table.name in ownership.PRIVATE_ROOTS:
+        from app.identity import owner_id
+        rows = [{**row, 'owner_user_id': owner_id()} for row in rows]
     if table.name in ('month_revenue', 'financials'):
         from app.publication import publication_fields
         rows = [publication_fields(table.name, r) for r in rows]
@@ -75,9 +83,10 @@ def upsert_many(conn, table, rows: list[dict]) -> int:
 
 
 def query_all(conn, sql: str, **params) -> list[dict]:
+    sql, params = ownership.scoped_select(sql, params)
     rs = conn.execute(text(sql), params)
     cols = rs.keys()
-    return [dict(zip(cols, row)) for row in rs.fetchall()]
+    return [{k: v for k, v in zip(cols, row) if k != 'rowid'} for row in rs.fetchall()]
 
 
 def query_one(conn, sql: str, **params) -> dict | None:

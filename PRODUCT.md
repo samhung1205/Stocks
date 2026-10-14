@@ -8,7 +8,7 @@ web
 
 ## Users
 
-The primary user is the owner, working on a desktop computer to research Taiwan-listed stocks, test investment ideas, assess risk, plan asset allocation, and document decisions. The product is private and does not need public accounts or multi-user administration. It may eventually be shared informally with one or two trusted friends.
+The primary user is the owner, working on a desktop computer to research Taiwan-listed stocks, test investment ideas, assess risk, plan asset allocation, and document decisions. Two or three trusted friends may join through administrator-issued invitations. Each account owns its financial planning, holdings, notes and research; market facts are shared. There is no public registration.
 
 ## Product Purpose
 
@@ -36,7 +36,7 @@ Alongside discretionary, stock-by-stock research, the product also has a systema
 - The current workflow covers a market dashboard, stock search and analysis, market screening, a staged watchlist, transaction journaling, personal finance and ETF planning, and a Strategy Lab (backtesting, optimization/robustness, walk-forward OOS validation) — all with a working UI at `strategy.html`. Cross-Strategy analysis remains API-only. Strategy Portfolios now have a dedicated `portfolio.html` interface.
 - Initial and ongoing market-data maintenance is performed inside the dashboard. Official end-of-day light-layer data is checked by an in-process scheduler, with startup catch-up and a visible freshness state. Missing sessions can still remain `partial` or `failed` and require investigation.
 - Orders are executed separately in a brokerage application.
-- The application runs locally and as a private, single-process Railway deployment with a persistent SQLite volume. The two databases are independent. Railway uses shared HTTP Basic credentials, not separate user accounts or per-user data isolation; deployment state and open data issues are recorded in `docs/railway-deployment.md`.
+- The application runs locally and as a private, single-process Railway deployment with a persistent SQLite volume. The two databases are independent. The current source defaults to invitation-only accounts (admin/member, server sessions, assisted password recovery and per-user private data). The last verified Railway deployment still uses shared HTTP Basic credentials; account migration and rollout remain pending. See `docs/ACCOUNTS.md` and `docs/railway-deployment.md`.
 
 ## Capabilities and Constraints
 
@@ -48,7 +48,7 @@ Alongside discretionary, stock-by-stock research, the product also has a systema
 - Backtests must prevent look-ahead bias and data leakage. Important assumptions, source data, transformations, and performance calculations must be traceable.
 - Desktop is the primary interaction target. Core information views require sound responsive behavior and must remain readable on mobile; advanced desktop workflows may be reduced on mobile.
 - The current implementation is a FastAPI application with a framework-free HTML/CSS/JavaScript frontend, vendored ECharts, SQLAlchemy Core, and a local SQLite database.
-- The Railway deployment requires an existing valid SQLite database, protects pages, API and API docs, and leaves only GET/HEAD `/api/health` public. Import-mode health is not evidence that the full application is ready.
+- Railway requires an existing valid SQLite database. The new accounts mode protects private pages/APIs and publishes only health plus minimal login/token-completion surfaces; the last verified Basic deployment publishes only GET/HEAD health. Import-mode health is not evidence that the full application is ready.
 - Automated refresh covers official daily/end-of-day data only. The Strategy Lab total-return benchmark is outside that refresh pipeline; delayed or live quotes remain separate from official daily closes.
 - The data architecture uses an always-available whole-market light layer, an on-demand stock-level deep layer, and retention cleanup for inactive deep data.
 - Current real-time quotes use Fugle when configured and otherwise fall back to the TWSE MIS snapshot source. The fallback must not make the overall quote experience fail when a key is absent or invalid.
@@ -58,7 +58,7 @@ Alongside discretionary, stock-by-stock research, the product also has a systema
 - **Allocation methods within a portfolio.** Equal weight and fixed (user-specified) weight are available today. Inverse-volatility weighting is implemented but currently reports insufficient evidence for the five real strategies on hand (they don't yet have enough out-of-sample history for it) — the UI discloses that readiness may be insufficient and never substitutes another method. Risk-parity, minimum-variance, and correlation-aware allocation are not implemented; they must not be described or presented as available product capabilities.
 - **No-candidate handling.** When a strategy inside a portfolio has no stable candidate at a given point in time, its capital allocation simply stays in cash for that period. It is never automatically redistributed to the portfolio's other strategies — an honest cash position is preferred over a fabricated substitute exposure.
 - **Financial Planner integration.** `finance.html` can pin a Strategy Portfolio (an exact version, plus an optional completed research run) as one investment source among ETF and manual entries. The Planner shows that run's historical/OOS evidence (CAGR, Sharpe, drawdown, cash behavior, warnings) clearly labeled as historical, never a forecast; the user must separately and explicitly set a planning return — nothing auto-fills it from the evidence, and selecting a portfolio or run alone never changes a plan's numbers. A Strategy Portfolio's market value in the plan is manual-entry-or-blank only, never derived from the backtest's equity curve or treated as a real position.
-- Public launch, general-user onboarding, and full multi-user account support are undecided and are not current requirements.
+- Public launch, self-service registration/email recovery, MFA and general-user onboarding are outside the invitation-only small-group scope. Production account rollout remains pending.
 
 ## Brand Commitments
 

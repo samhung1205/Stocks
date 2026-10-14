@@ -75,6 +75,12 @@ FUGLE_API_KEY = os.environ.get("FUGLE_API_KEY", FUGLE_API_KEY)
 REQUIRE_AUTH = bool(os.environ.get("RAILWAY_ENVIRONMENT_ID")) or os.environ.get("STOCKS_REQUIRE_AUTH", "0") == "1"
 AUTH_USERNAME = os.environ.get("STOCKS_AUTH_USERNAME", "")
 AUTH_PASSWORD = os.environ.get("STOCKS_AUTH_PASSWORD", "")
+AUTH_MODE = os.environ.get("STOCKS_AUTH_MODE", "accounts")
+if AUTH_MODE not in {"accounts", "basic"}:
+    raise RuntimeError("STOCKS_AUTH_MODE must be accounts or basic")
+SESSION_HOURS = 24
+SESSION_IDLE_MINUTES = 120
+AUTH_COOKIE_SECURE = bool(os.environ.get("RAILWAY_ENVIRONMENT_ID")) or os.environ.get("STOCKS_COOKIE_SECURE", "1") == "1"
 REQUIRE_EXISTING_DB = bool(os.environ.get("RAILWAY_ENVIRONMENT_ID")) or os.environ.get("STOCKS_REQUIRE_EXISTING_DB", "0") == "1"
 
 # Data-foundation defaults; API/CLI may override liquidity threshold per job.

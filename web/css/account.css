@@ -1,0 +1,22 @@
+.login-desk { max-width: 1120px; margin: 0 auto; min-height: 100svh; padding: 64px 32px; display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 80px; }
+.account-brand { color: var(--text); font-size: 19px; font-weight: 700; }
+.login-intro h1 { font-size: clamp(36px, 4vw, 54px); line-height: 1.28; letter-spacing: -.025em; margin: 40px 0 24px; }
+.login-intro > p { max-width: 42ch; }
+.account-boundaries { margin: 36px 0; border-top: 1px solid var(--border); }
+.account-boundaries div { padding: 16px 0; border-bottom: 1px solid var(--border); }
+.account-boundaries dt { font-weight: 600; margin-bottom: 4px; }.account-boundaries dd { margin: 0; color: var(--muted); }
+.account-footnote { color: var(--muted); font-size: 14px; }
+.login-form-section { background: var(--paper); padding: 36px; border: 1px solid var(--border); border-radius: var(--r-lg); }
+.login-form-section h2 { margin-top: 0; font-size: 25px; }.login-form-section input, .account-password-form input { width: 100%; }
+.login-form-section button[type=submit], .account-password-form button { margin-top: 24px; width: 100%; min-height: 44px; }
+.account-main { max-width: 1120px; margin: 0 auto; padding: 32px; }.account-identity { padding: 16px 0; border-bottom: 1px solid var(--border); }
+.account-section { padding: 28px 0; border-bottom: 1px solid var(--border); }.account-section h2 { margin: 0 0 8px; }.account-section > div > p { max-width: 70ch; }
+.account-password-form { max-width: 420px; margin-top: 24px; }.account-invite-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: start; gap: 16px; margin: 24px 0; }
+.account-invite-form input { width: 100%; }.account-invite-form button { margin-top: 31px; min-height: 44px; }
+.account-main label, .login-form-section label { display: block; margin: 18px 0 6px; }.account-invite-form label { margin-top: 0; }
+.account-message { min-height: 26px; overflow-wrap: anywhere; }.account-message[data-error=true] { color: var(--danger); font-weight: 600; }
+.account-table-scroll { overflow-x: auto; }.account-table-scroll table { width: 100%; font-variant-numeric: tabular-nums; }.account-table-scroll td { vertical-align: top; }.account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.account-actions button { min-height: 40px; }.issued-link { padding: 20px; margin: 20px 0; background: var(--inset); border: 1px solid var(--border); }.issued-link input { width: 100%; margin-bottom: 12px; }
+.account-main [hidden], .login-desk [hidden] { display: none; }
+.account-nav { margin-left: 8px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 760px) { .login-desk { display: block; padding: 28px 20px; }.login-intro h1 { font-size: 36px; margin-top: 24px; }.account-boundaries { margin: 24px 0; }.login-form-section { margin-top: 28px; padding: 24px; }.account-main { padding: 24px 16px; }.account-invite-form { grid-template-columns: 1fr; }.account-invite-form button { margin-top: 0; }.account-actions { min-width: 130px; }.account-main .desk-page-head { align-items: start; }.account-nav { font-size: 13px; } }
