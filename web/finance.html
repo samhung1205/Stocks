@@ -11,7 +11,7 @@
 <body>
 <main class="fin-main">
   <header class="desk-page-head">
-    <div><div class="desk-kicker">個人決策 / 規劃卷宗</div><h1>財務規劃與長期投資</h1><p class="muted">研究證據與未來規劃假設分開記錄；試算結果不是報酬預測。</p></div>
+    <div><h1>財務規劃與長期投資</h1><p class="muted">研究證據與未來規劃假設分開記錄；試算結果不是報酬預測。</p></div>
     <div class="desk-asof"><span>工作流程</span><strong>輸入 → 假設 → 試算</strong></div>
   </header>
 
@@ -24,7 +24,7 @@
     <span id="planner-form-error" class="fin-source-error" role="alert" tabindex="-1" hidden></span>
     <span class="grow"></span>
     <button id="btn-refresh-etf" class="ghost small" type="button" data-admin hidden>補齊 ETF 歷史資料</button>
-    <span class="muted" id="save-hint"></span>
+    <span class="muted" id="save-hint" role="status" aria-live="polite"></span>
   </div>
 
   <p class="fin-disclaimer" id="disclaimer">載入中…</p>
@@ -32,7 +32,7 @@
   <div class="fin-layout">
     <!-- ── 輸入區（Stepper） ───────────────────────────── -->
     <aside class="fin-input">
-      <div class="fin-steps" id="steps"></div>
+      <div class="fin-steps" id="steps"></div><nav id="step-results" class="step-results" aria-label="目前輸入對應的試算結果"></nav>
 
       <!-- Step 1 個人基本資料 -->
       <div class="card fin-step" data-step="1">
@@ -49,9 +49,9 @@
           （買房、子女教育），建議的投資比例會保留較多餘裕。</p>
       </div>
 
-      <!-- Step 2 目前財務狀況 -->
+      <!-- 步驟 2 目前財務狀況 -->
       <div class="card fin-step" data-step="2">
-        <h2>目前財務狀況 <span class="step-n">Step 2</span></h2>
+        <h2>目前財務狀況 <span class="step-n">步驟 2</span></h2>
         <fieldset><legend>收入（每月）</legend>
           <div class="fin-grid" style="padding:0 10px 10px">
             <div><label for="f-income_monthly">月收入</label><input type="number" id="f-income_monthly"></div>
@@ -149,10 +149,10 @@
             <button type="button" class="ghost small" id="add-manual">新增自訂來源</button>
           </div>
           <div id="portfolio-source-form" hidden>
-            <p id="source-form-title" class="fin-hint">選擇 Portfolio、固定版本與選填研究結果。</p>
-            <label for="source-portfolio-search">搜尋 Portfolio</label><input id="source-portfolio-search" class="fin-source-search" type="search" placeholder="輸入名稱或編號">
+            <p id="source-form-title" class="fin-hint">選擇 投資組合、固定版本與選填研究結果。</p>
+            <label for="source-portfolio-search">搜尋 投資組合</label><input id="source-portfolio-search" class="fin-source-search" type="search" placeholder="輸入名稱或編號">
             <span id="source-portfolio-range" class="fin-source-range" aria-live="polite"></span>
-            <label for="source-portfolio">Portfolio</label><select id="source-portfolio"></select>
+            <label for="source-portfolio">投資組合</label><select id="source-portfolio"></select>
             <label for="source-version">Version</label><select id="source-version"></select>
             <label for="source-run">已完成研究紀錄（選填）</label><select id="source-run"></select>
             <p id="source-pin" class="fin-hint" aria-live="polite"></p>
@@ -168,7 +168,7 @@
               <button type="button" class="ghost small" id="source-use-reference" hidden>採用作為規劃假設</button>
               <p id="source-assumption-note" class="fin-hint" aria-live="polite"></p>
             </div>
-            <p class="fin-hint">Strategy Portfolio 目前市值只由你手動輸入或留空。若 Step 2 的股票／ETF 資產已含這筆市值，請避免重複輸入。組合內部現金僅供研究參考，不列為 Planner 個人現金。</p>
+            <p class="fin-hint">策略投資組合 目前市值只由你手動輸入或留空。若 步驟 2 的股票／ETF 資產已含這筆市值，請避免重複輸入。組合內部現金僅供研究參考，不列為 個人規劃現金。</p>
             <p id="source-error" class="fin-source-error" role="alert" tabindex="-1" hidden></p>
             <div class="flex mt"><button type="button" id="source-confirm">確認來源與假設</button><button type="button" class="ghost" id="source-cancel" hidden>取消重新連結</button></div>
           </div>

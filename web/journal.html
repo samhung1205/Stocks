@@ -9,256 +9,70 @@
 </head>
 <body>
 <main class="journal-main">
-  <header class="desk-page-head"><div><p class="desk-kicker">個人決策 / 計畫與紀錄</p><h1>交易日誌</h1><p class="muted">先寫下買進理由與失效條件，再記錄實際執行。</p></div></header>
+  <header class="desk-page-head"><div><h1>交易日誌</h1><p class="muted">先讓研究助手整理證據，再由你確認理由、價格與風險。</p></div><a href="#journal-review">回看已儲存計畫</a></header>
 
-  <div class="journal-empty" id="journal-perf-empty" hidden><h2>尚無可計算的已實現績效</h2><p>先建立交易計畫；記錄買賣並有平倉樣本後，這裡會顯示已實現損益與交易統計。</p><a href="#journal-plan" class="btn">撰寫交易計畫</a></div>
-
-  <div class="grid cols-2 mt journal-layout">
-    <div class="card journal-plan" id="journal-plan">
-      <div class="flex">
-        <h2 style="margin:0">買進前八句話（交易計畫）</h2>
-        <span class="spacer"></span>
-        <button id="btn-draft" class="ghost small" type="button">帶入系統草稿</button>
+  <section class="journal-workbench" aria-label="研究計畫工作區">
+    <section class="card journal-plan" id="journal-plan" aria-labelledby="plan-title">
+      <div class="journal-section-head"><h2 id="plan-title">整理一份研究計畫</h2><span id="draft-state" role="status" class="muted">尚未開始</span></div>
+      <p class="muted">本機研究助手會整理現有行情、營收、財報與警訊。你可以直接檢視草稿，只修正需要補充的地方。</p>
+      <div class="journal-start-fields">
+        <div><label for="pl-stock_id">股票代號</label><input id="pl-stock_id" placeholder="如 2330" inputmode="numeric" autocomplete="off"></div>
+        <div><label for="assistant-focus">這次想研究什麼？</label><select id="assistant-focus"><option value="observe">先建立觀察</option><option value="growth">營收與獲利成長</option><option value="quality">獲利與現金流品質</option><option value="trend">價格趨勢與籌碼</option><option value="valuation">估值與安全邊際</option></select></div>
+        <div><label for="pl-horizon">投資週期</label><select id="pl-horizon"><option value="long">長期（1–5 年）</option><option value="swing" selected>中期（1–12 個月）</option><option value="short">短期（數天至數週）</option></select></div>
       </div>
-      <p class="muted" style="margin:6px 0 0">
-        1、2、3、4 句需要你自己的判斷（原因、成長驅動力、市場預期、你的優勢）— 這些本質上無法自動生成。
-        5、7 句可按右上角「帶入系統草稿」由資料自動草擬，再自行修改。
-      </p>
-      <label for="pl-stock_id">股票代號 *</label><input id="pl-stock_id" placeholder="2330">
-      <label for="pl-horizon">投資週期</label>
-      <select id="pl-horizon">
-        <option value="long">長期投資（1-5年）</option>
-        <option value="swing" selected>中期波段（1-12個月）</option>
-        <option value="short">短線交易（數天-數週）</option>
-      </select>
-      <label for="pl-q1_reason">1. 我買這家公司是因為什麼？</label><textarea id="pl-q1_reason" rows="2"></textarea>
-      <label for="pl-q2_growth_from">2. 未來獲利成長來自哪裡？</label><textarea id="pl-q2_growth_from" rows="2"></textarea>
-      <label for="pl-q3_market_view">3. 市場目前的主要預期是什麼？</label><textarea id="pl-q3_market_view" rows="2"></textarea>
-      <label for="pl-q4_my_edge">4. 我的看法與市場有何不同？</label><textarea id="pl-q4_my_edge" rows="2"></textarea>
-      <label for="pl-q5_priced_in">5. 目前價格已經反映多少成長？</label><textarea id="pl-q5_priced_in" rows="2"></textarea>
-      <label for="pl-q6_catalyst">6. 下一個催化事件是什麼？何時？</label><textarea id="pl-q6_catalyst" rows="2"></textarea>
-      <label for="pl-q7_wrong_signal">7. 哪些數據出現代表我判斷錯了？</label><textarea id="pl-q7_wrong_signal" rows="2"></textarea>
+      <div class="journal-actions"><button id="btn-draft" type="button">整理證據與計畫草稿</button><button id="btn-reset-plan" class="ghost" type="button">開始另一份計畫</button></div>
+      <p id="assistant-status" class="journal-inline-status" role="status" aria-live="polite"></p>
+      <section id="assistant-evidence" class="journal-evidence" aria-labelledby="evidence-title" hidden>
+        <h3 id="evidence-title">本次採用的資料</h3><p id="evidence-asof" class="muted"></p><dl id="evidence-facts"></dl><div id="evidence-warnings"></div>
+      </section>
+      <div id="assistant-questions" class="journal-questions"></div>
+      <p class="journal-assistant-note muted">「待查證」會跟著計畫保存。系統不代替你宣稱市場共識、個人優勢或已確認的催化事件。</p>
+    </section>
 
-      <fieldset class="mt">
-        <legend>8. 風險與部位（先決定最多虧多少，再反推部位）</legend>
-        <div class="grid cols-3" style="padding:10px">
-          <div><label for="pl-q8_max_loss">最大可虧金額 *</label><input type="number" id="pl-q8_max_loss" placeholder="如 30000"></div>
-          <div><label for="pl-entry_price">進場價 *</label><input type="number" id="pl-entry_price" step="0.01"></div>
-          <div><label for="pl-stop_price">停損價 *</label><input type="number" id="pl-stop_price" step="0.01"></div>
-          <div><label for="pl-target_price">目標價</label><input type="number" id="pl-target_price" step="0.01"></div>
-          <div style="grid-column:span 2"><span class="field-label">建議部位</span>
-            <div id="pos-suggest" class="muted" style="padding:8px 0">填進場/停損/最大虧損後自動計算</div></div>
+    <aside class="journal-commit" aria-labelledby="risk-title">
+      <section class="card">
+        <h2 id="risk-title">決定風險，再儲存計畫</h2>
+        <p id="price-note" class="muted">助手可帶入最近收盤與有效的均線參考；計畫價格仍由你確認。</p>
+        <div class="journal-risk-fields">
+          <div><label for="pl-entry_price">計畫進場價（元）</label><input type="number" id="pl-entry_price" min="0" step="0.01"></div>
+          <div><label for="pl-stop_price">計畫停損價（元）</label><input type="number" id="pl-stop_price" min="0" step="0.01"></div>
+          <div><label for="pl-q8_max_loss">最多可虧金額（元）</label><input type="number" id="pl-q8_max_loss" min="0" placeholder="由你設定，如 10000"></div>
+          <div><label for="pl-target_price">目標價（選填）</label><input type="number" id="pl-target_price" min="0" step="0.01"></div>
         </div>
-      </fieldset>
-      <div class="flex">
-        <button id="btn-save-plan">建立交易計畫</button>
-        <span class="muted" id="plan-hint"></span>
-      </div>
-    </div>
-
-    <div class="journal-execution">
-      <div class="card">
-        <h2>記錄成交</h2>
-        <div class="grid cols-3">
-          <div><label for="tr-stock_id">代號 *</label><input id="tr-stock_id" placeholder="2330"></div>
-          <div><label for="tr-side">方向 *</label>
-            <select id="tr-side"><option value="buy">買進</option><option value="sell">賣出</option></select></div>
-          <div><label for="tr-date">日期</label><input type="date" id="tr-date"></div>
-          <div><label for="tr-shares">股數 *</label><input type="number" id="tr-shares" placeholder="1000"></div>
-          <div><label for="tr-price">價格 *</label><input type="number" id="tr-price" step="0.01"></div>
-          <div><label for="tr-plan_id">關聯計畫</label>
-            <select id="tr-plan_id"><option value="">（無）</option></select></div>
+        <div id="pos-suggest" class="journal-position" role="status">填入進場價、停損價與最大虧損後，顯示參考部位。</div>
+        <label class="journal-check"><input type="checkbox" id="assistant-reviewed"><span>我已檢視草稿與風險設定；未確認的內容保留為待查證。</span></label>
+        <button id="btn-save-plan" type="button">儲存研究計畫</button>
+        <p id="plan-hint" class="journal-inline-status" role="status" aria-live="polite"></p>
+        <p class="muted journal-small">可先記錄不完整的研究，再持續追蹤。儲存計畫不會記錄成交。</p>
+      </section>
+      <details class="card journal-trade-entry">
+        <summary>記錄已實際發生的成交</summary>
+        <p class="muted">在券商完成交易後，於此記錄；手續費與證交稅由系統估算。</p>
+        <div class="journal-risk-fields">
+          <div><label for="tr-stock_id">股票代號</label><input id="tr-stock_id" placeholder="2330"></div>
+          <div><label for="tr-side">方向</label><select id="tr-side"><option value="buy">買進</option><option value="sell">賣出</option></select></div>
+          <div><label for="tr-date">成交日期</label><input type="date" id="tr-date"></div>
+          <div><label for="tr-plan_id">關聯計畫</label><select id="tr-plan_id"><option value="">無</option></select></div>
+          <div><label for="tr-shares">股數</label><input type="number" id="tr-shares" min="1" placeholder="如 1000"></div>
+          <div><label for="tr-price">成交價格</label><input type="number" id="tr-price" min="0" step="0.01"></div>
         </div>
-        <div class="flex mt">
-          <button id="btn-add-trade">記錄成交</button>
-          <span class="muted">手續費/證交稅自動估算（可於 .env 調整折數）</span>
-        </div>
-      </div>
+        <button id="btn-add-trade" type="button">記錄成交</button>
+      </details>
+    </aside>
+  </section>
 
-      <div class="card mt">
-        <h2>目前持倉（未實現）</h2>
-        <div class="scroll-x"><table class="data" id="pos-table">
-          <thead><tr><th class="l">股票</th><th>股數</th><th>均價</th><th>市價</th><th>市值</th><th>損益</th><th>%</th></tr></thead>
-          <tbody></tbody></table></div>
-      </div>
+  <section id="journal-review" class="journal-review" aria-labelledby="review-title">
+    <div class="journal-section-head"><div><h2 id="review-title" tabindex="-1">回看原始計畫</h2><p class="muted">展開計畫，查看當時保存的理由、待查證事項與風險；結案後仍可回看。</p></div><div><label for="plan-status-filter">顯示計畫</label><select id="plan-status-filter"><option value="open">進行中</option><option value="closed">已結案</option><option value="cancelled">已取消</option><option value="all">全部</option></select></div></div>
+    <div id="plans-list" aria-live="polite">正在讀取計畫…</div>
+  </section>
 
-      <div class="card mt">
-        <h2>進行中的計畫</h2>
-        <div id="plans-list" class="scroll-x"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card mt">
-    <h2>成交紀錄</h2>
-    <div class="scroll-x"><table class="data" id="trades-table">
-      <thead><tr><th class="l">日期</th><th class="l">股票</th><th>方向</th><th>股數</th><th>價格</th><th>手續費</th><th>證交稅</th></tr></thead>
-      <tbody></tbody></table></div>
-  </div>
-  <section class="journal-performance" id="journal-performance" hidden><h2>已實現績效</h2><div class="grid cols-4" id="perf-cards">
-    <div class="card"><div class="k">已實現損益</div><div class="v" id="pf-pnl">—</div></div>
-    <div class="card"><div class="k">勝率</div><div class="v" id="pf-win">—</div><div class="muted" id="pf-n">—</div></div>
-    <div class="card"><div class="k">平均賺 / 平均賠</div><div class="v" id="pf-avg">—</div></div>
-    <div class="card"><div class="k">盈虧比</div><div class="v" id="pf-factor">—</div>
-      <div class="muted">框架：盈虧比 × 勝率決定期望值</div></div>
+  <section class="card mt" aria-labelledby="positions-title"><h2 id="positions-title">目前持倉（未實現）</h2><div id="positions-status"></div><div class="scroll-x"><table class="data" id="pos-table"><thead><tr><th scope="col" class="l">股票</th><th scope="col">股數</th><th scope="col">均價</th><th scope="col">市價</th><th scope="col">市值</th><th scope="col">損益</th><th scope="col">報酬率</th></tr></thead><tbody></tbody></table></div></section>
+  <section class="card mt" aria-labelledby="trades-title"><h2 id="trades-title">成交紀錄</h2><div id="trades-status"></div><div class="scroll-x"><table class="data" id="trades-table"><thead><tr><th scope="col" class="l">日期</th><th scope="col" class="l">股票</th><th scope="col">方向</th><th scope="col">股數</th><th scope="col">價格</th><th scope="col">手續費</th><th scope="col">證交稅</th></tr></thead><tbody></tbody></table></div></section>
+  <section class="journal-performance" aria-labelledby="performance-title"><h2 id="performance-title">已實現績效</h2><div id="performance-status"></div><div class="journal-empty" id="journal-perf-empty" hidden><p>尚無可計算的平倉樣本；記錄完整買賣後，這裡才會顯示已實現損益與交易統計。</p></div><div class="grid cols-4" id="journal-performance" hidden>
+    <div class="card"><div class="k">已實現損益</div><div class="v" id="pf-pnl">—</div></div><div class="card"><div class="k">勝率</div><div class="v" id="pf-win">—</div><div class="muted" id="pf-n">—</div></div><div class="card"><div class="k">平均賺／平均賠</div><div class="v" id="pf-avg">—</div></div><div class="card"><div class="k">盈虧比</div><div class="v" id="pf-factor">—</div></div>
   </div></section>
 </main>
-
 <script src="js/common.js"></script>
-<script>
-/* 部位計算 */
-async function calcPosition() {
-  const entry = parseFloat(document.getElementById("pl-entry_price").value);
-  const stop = parseFloat(document.getElementById("pl-stop_price").value);
-  const maxLoss = parseFloat(document.getElementById("pl-q8_max_loss").value);
-  const el = document.getElementById("pos-suggest");
-  if (!(entry && stop && maxLoss)) return;
-  try {
-    const r = await api("/api/journal/position-size",
-      { method: "POST", body: { entry, stop, max_loss: maxLoss } });
-    if (r.error) { el.textContent = r.error; el.className = "warn"; return; }
-    el.className = "";
-    el.innerHTML = `每股風險 <b>${r.risk_per_share}</b> 元 → 最多 <b>${fmt.int(r.max_shares)}</b> 股
-      （整張 <b>${r.suggest_lots}</b> 張）｜需要資金約 ${fmt.int(r.capital_needed)} 元`;
-  } catch (err) { el.textContent = err.message; }
-}
-["pl-entry_price", "pl-stop_price", "pl-q8_max_loss"].forEach(id =>
-  document.getElementById(id).addEventListener("input", calcPosition));
-
-/* 建立計畫 */
-document.getElementById("btn-save-plan").addEventListener("click", async () => {
-  const payload = {};
-  document.querySelectorAll("[id^='pl-']").forEach(el => {
-    const key = el.id.slice(3);
-    payload[key] = el.type === "number" ? (el.value ? parseFloat(el.value) : null) : el.value.trim();
-  });
-  if (!payload.stock_id) { toast("請填股票代號"); return; }
-  try {
-    const r = await api("/api/journal/plans", { method: "POST", body: payload });
-    const hint = document.getElementById("plan-hint");
-    if (r.missing.length) {
-      hint.innerHTML = `<span class="warn">已建立，但還有 ${r.missing.length} 句未寫：${r.missing[0]} …</span>`;
-    } else {
-      hint.textContent = "✓ 八句話已寫齊，紀律完成";
-    }
-    toast("交易計畫已建立 #" + r.id);
-    loadPlans();
-  } catch (err) { toastError("交易計畫未建立：" + err.message); }
-});
-
-/* 記錄成交 */
-document.getElementById("btn-add-trade").addEventListener("click", async () => {
-  const payload = {
-    stock_id: document.getElementById("tr-stock_id").value.trim(),
-    side: document.getElementById("tr-side").value,
-    date: document.getElementById("tr-date").value || undefined,
-    shares: parseFloat(document.getElementById("tr-shares").value),
-    price: parseFloat(document.getElementById("tr-price").value),
-    plan_id: document.getElementById("tr-plan_id").value || null,
-  };
-  try {
-    await api("/api/journal/trades", { method: "POST", body: payload });
-    toast("已記錄成交");
-    loadTrades(); loadPositions(); loadPerf();
-  } catch (err) { toastError("成交未記錄：" + err.message); }
-});
-
-/* 載入區塊 */
-async function loadPerf() {
-  const p = await api("/api/journal/performance");
-  const hasSample = Number(p.closed_trades) > 0;
-  document.getElementById("journal-performance").hidden = !hasSample;
-  document.getElementById("journal-perf-empty").hidden = hasSample;
-  const pnl = document.getElementById("pf-pnl");
-  pnl.textContent = fmt.int(p.total_pnl);
-  pnl.className = "v " + fmt.cls(p.total_pnl);
-  document.getElementById("pf-win").textContent = p.win_rate != null ? fmt.pct(p.win_rate) : "—";
-  document.getElementById("pf-n").textContent = `已平倉 ${p.closed_trades} 筆`;
-  document.getElementById("pf-avg").textContent = `${fmt.int(p.avg_win)} / ${fmt.int(p.avg_loss)}`;
-  document.getElementById("pf-factor").textContent = p.profit_factor ?? "—";
-}
-
-async function loadPositions() {
-  const rows = await api("/api/journal/positions");
-  document.querySelector("#pos-table tbody").innerHTML = rows.length ? rows.map(r => `
-    <tr>
-      <td class="l"><a href="stock.html?id=${r.stock_id}">${r.stock_id} ${r.name || ""}</a></td>
-      <td>${fmt.int(r.shares)}</td><td>${fmt.num(r.avg_cost)}</td>
-      <td>${fmt.num(r.last)}</td><td>${fmt.int(r.market_value)}</td>
-      <td class="${fmt.cls(r.unrealized)}">${fmt.int(r.unrealized)}</td>
-      <td class="${fmt.cls(r.unrealized)}">${fmt.signPct(r.unrealized_pct)}</td>
-    </tr>`).join("") : '<tr><td colspan="7" class="muted l">無持倉</td></tr>';
-}
-
-async function loadPlans() {
-  const plans = await api("/api/journal/plans?status=open");
-  const sel = document.getElementById("tr-plan_id");
-  sel.innerHTML = '<option value="">（無）</option>' + plans.map(p =>
-    `<option value="${p.id}">#${p.id} ${p.stock_id} ${p.name || ""}</option>`).join("");
-  document.getElementById("plans-list").innerHTML = plans.length ? `
-    <table class="data"><thead><tr>
-      <th class="l">計畫</th><th>進場</th><th>停損</th><th>目標</th><th>最大虧損</th><th>八句話</th><th></th>
-    </tr></thead><tbody>${plans.map(p => `
-      <tr>
-        <td class="l">#${p.id} <a href="stock.html?id=${p.stock_id}">${p.stock_id} ${p.name || ""}</a>
-          <span class="muted">${p.created_at?.slice(0, 10) || ""}</span></td>
-        <td>${fmt.num(p.entry_price)}</td><td>${fmt.num(p.stop_price)}</td>
-        <td>${fmt.num(p.target_price)}</td><td>${fmt.int(p.q8_max_loss)}</td>
-        <td>${p.missing.length ? `<span class="badge warn">缺 ${p.missing.length} 句</span>` : "✓ 完整"}</td>
-        <td><button class="ghost small" onclick="closePlan(${p.id})">結案</button></td>
-      </tr>`).join("")}</tbody></table>`
-    : '<p class="muted">尚無進行中的計畫。</p>';
-}
-
-async function closePlan(id) {
-  try {
-    await api(`/api/journal/plans/${id}/status`, { method: "POST", body: { status: "closed" } });
-    toast(`計畫 #${id} 已結案`);
-  } catch (err) { toastError(`計畫 #${id} 未結案：${err.message}`); }
-  loadPlans();
-}
-
-async function loadTrades() {
-  const rows = await api("/api/journal/trades");
-  document.querySelector("#trades-table tbody").innerHTML = rows.length ? rows.map(t => `
-    <tr>
-      <td class="l">${t.date}</td>
-      <td class="l"><a href="stock.html?id=${t.stock_id}">${t.stock_id} ${t.name || ""}</a></td>
-      <td class="${t.side === "buy" ? "up" : "down"}">${t.side === "buy" ? "買進" : "賣出"}</td>
-      <td>${fmt.int(t.shares)}</td><td>${fmt.num(t.price)}</td>
-      <td>${fmt.int(t.fee)}</td><td>${fmt.int(t.tax)}</td>
-    </tr>`).join("") : '<tr><td colspan="7" class="muted l">尚無成交紀錄</td></tr>';
-}
-
-/* 系統草稿：把可由數據回答的部分（估值反映程度、警訊/技術停損點）先草擬好 */
-async function loadDraft(sid) {
-  if (!sid) { toast("請先填股票代號"); return; }
-  const btn = document.getElementById("btn-draft");
-  btn.disabled = true; btn.textContent = "草擬中…";
-  try {
-    const d = await api(`/api/journal/draft-plan/${sid}`);
-    if (d.q5_priced_in) document.getElementById("pl-q5_priced_in").value = d.q5_priced_in;
-    if (d.q7_wrong_signal) document.getElementById("pl-q7_wrong_signal").value = d.q7_wrong_signal;
-    if (d.q6_catalyst) document.getElementById("pl-q6_catalyst").value = d.q6_catalyst;
-    if (d.entry_price != null) document.getElementById("pl-entry_price").value = d.entry_price;
-    if (d.stop_price != null) document.getElementById("pl-stop_price").value = d.stop_price;
-    calcPosition();
-    toast("已帶入系統草稿，記得填 1-4 句與確認金額");
-  } catch (err) { toastError("草擬失敗：" + err.message); }
-  btn.disabled = false; btn.textContent = "帶入系統草稿";
-}
-document.getElementById("btn-draft").addEventListener("click", () =>
-  loadDraft(document.getElementById("pl-stock_id").value.trim()));
-
-/* 從個股頁帶入代號，並自動草擬 */
-const planSid = qs("plan");
-if (planSid) {
-  document.getElementById("pl-stock_id").value = planSid;
-  loadDraft(planSid);
-}
-document.getElementById("tr-date").value = new Date().toISOString().slice(0, 10);
-
-loadPerf(); loadPositions(); loadPlans(); loadTrades();
-</script>
+<script src="js/journal.js"></script>
 </body>
 </html>

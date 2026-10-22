@@ -128,8 +128,10 @@ def technical_summary(stock_id: str) -> dict:
     def ma(n):
         return round(sum(closes[-n:]) / n, 2) if len(closes) >= n else None
 
-    high52 = max(r["high"] or 0 for r in rows)
-    low52 = min(r["low"] or 1e12 for r in rows if r["low"])
+    # Sparse sources may provide closes without OHLC. Unknown extremes stay
+    # nullable; do not synthesize zero/high sentinels or fail on an empty set.
+    high52 = max((r["high"] for r in rows if r["high"] is not None), default=None)
+    low52 = min((r["low"] for r in rows if r["low"] is not None), default=None)
     vol20 = sum(vols[-20:]) / 20 if len(vols) >= 20 else None
     return {
         "close": last, "ma20": ma(20), "ma60": ma(60),

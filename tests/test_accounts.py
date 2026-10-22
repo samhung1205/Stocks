@@ -266,8 +266,21 @@ class AccountsTests(unittest.TestCase):
         with identity.actor_scope(self.owner):
             plan = journal.create_plan({'stock_id': '2330'})
         c = self.login()
+        self.assertEqual(c.get(f'/api/journal/plans/{plan}').status_code, 404)
         self.assertEqual(c.post(f'/api/journal/plans/{plan}/status', json={'status': 'closed'}).status_code, 404)
         self.assertEqual(c.post('/api/journal/trades', json={'plan_id': plan, 'stock_id': '2330', 'side': 'buy', 'shares': 10, 'price': 100}).status_code, 404)
+
+    def test_journal_detail_is_private_even_for_admin_and_survives_closing(self):
+        with identity.actor_scope(self.friend):
+            pid = journal.create_plan({'stock_id': '2330', 'q1_reason': '朋友的原始研究'})
+            journal.update_plan_status(pid, 'closed')
+        member = self.login()
+        detail = member.get(f'/api/journal/plans/{pid}')
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()['q1_reason'], '朋友的原始研究')
+        self.assertEqual(detail.json()['status'], 'closed')
+        admin = self.login('owner')
+        self.assertEqual(admin.get(f'/api/journal/plans/{pid}').status_code, 404)
 
     def test_strategy_versions_and_admin_private_data_do_not_bypass_ownership(self):
         owned = self.create_strategy(self.owner)

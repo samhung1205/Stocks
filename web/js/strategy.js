@@ -2,6 +2,12 @@
 (function () {
   const root = document.getElementById("lab-root");
   const state = { templates: [], strategy: null, step: 1, params: {}, backtest: {}, run: {} };
+  let builderDirty = false, builderBusy = false;
+  protectUnsaved(() => builderDirty || builderBusy);
+  function dirtyBuilder() {
+    builderDirty = true;
+    if ($("autosave-note")) $("autosave-note").textContent = "有未儲存設定 · 草稿僅保留在本頁，儲存會新增版本";
+  }
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -154,7 +160,7 @@
         catch { return run; }
       }));
       setRoot(`<header class="lab-page-head">
-          <div><div class="eyebrow">策略研究 / 研究起點</div><h1>策略實驗室</h1>
+          <div><h1>策略實驗室</h1>
             <p class="muted">從可解釋模板建立策略、保留版本，並用實際資料檢查歷史表現。</p></div>
           <div class="head-actions"><a class="btn ghost" href="strategy.html?walkforward=home">樣本外驗證</a>
             <a class="btn ghost" href="strategy.html?optimization=home">參數穩健性</a>
@@ -246,7 +252,7 @@
 
   function renderBuilder(meta) {
     setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="strategy.html">← 策略實驗室</a>
-        <div class="eyebrow">策略研究 / 定義卷宗</div><h1>${state.strategy ? "建立策略新版本" : "建立研究策略"}</h1>
+        <h1>${state.strategy ? "建立策略新版本" : "建立研究策略"}</h1>
         <p class="muted">${esc(label(meta.key))} · ${state.strategy ? `v${state.strategy.latest_version.version_no}` : "尚未建立"}</p></div>
         ${state.strategy ? `<a class="btn ghost" href="strategy.html?id=${state.strategy.id}">查看結果</a>` : ""}</header>
       <nav class="steps lab-steps" id="builder-steps" aria-label="策略設定步驟">
@@ -262,10 +268,13 @@
         <section class="card step" data-step="7">${dataStep()}</section>
         <section class="card step" data-step="8"><div id="review-content"></div></section>
         <div class="builder-actions"><button class="ghost" id="builder-prev" type="button">上一步</button>
-          <span class="muted" id="autosave-note">設定只會在儲存或執行時建立新版本。</span>
+          <span class="muted" id="autosave-note" role="status" aria-live="polite">設定只會在儲存或執行時建立新版本。</span>
           <button id="builder-next" type="button">下一步</button></div>
       </form>`);
     bindBuilder(meta);
+    builderDirty = false;
+    $("builder-form").addEventListener("input", dirtyBuilder);
+    $("builder-form").addEventListener("change", dirtyBuilder);
     goStep(1);
   }
 
@@ -388,7 +397,7 @@
       <details class="more"><summary>進階成交設定</summary><div class="form-grid">
         ${selectField("execution.price", "成交價格", [["open", "下一交易日開盤"], ["close", "下一交易日收盤"]], "backtest")}
         ${numberField("execution.delay_sessions", "延遲交易日", { source: "backtest", min: 1 })}
-        ${selectField("missing.execution", "缺少成交價", [["next_available", "等下一個可用價格"], ["cancel", "取消訂單"]], "backtest")}
+        ${selectField("missing.execution", "缺少成交價", [["next_available", "等下一個可用價格"], ["partial", "可成交部分先執行"], ["cancel", "取消訂單"]], "backtest")}
         ${numberField("missing.max_stale_sessions", "估值最長陳舊交易日", { source: "backtest", min: 0 })}</div></details>`;
   }
 
@@ -455,6 +464,7 @@
     const name = $("strategy-name").value.trim();
     if (!name) { $("strategy-name").focus(); toast("請先輸入策略名稱"); return; }
     const button = $("builder-next"); button.disabled = true; button.textContent = "建立中…";
+    builderBusy = true; $("builder-form").inert = true;
     try {
       state.strategy = await api("/api/strategy-lab/strategies", { method: "POST", body: {
         name, description: $("strategy-description").value.trim() || null, template_key: meta.key,
@@ -464,9 +474,11 @@
       document.querySelector(".lab-page-head p").textContent =
         `${label(meta.key)} · v${state.strategy.latest_version.version_no}`;
       $("builder-steps").querySelectorAll("button").forEach(b => b.disabled = false);
+      builderDirty = false;
+      $("autosave-note").textContent = "策略已建立；後續修改需在執行時儲存為新版本。";
       toast("策略已建立，接著設定研究範圍"); goStep(2);
     } catch (error) { toastError(`建立失敗：${error.message}`); }
-    finally { button.disabled = false; }
+    finally { button.disabled = false; builderBusy = false; $("builder-form").inert = false; }
   }
 
   function goStep(next) {
@@ -502,7 +514,11 @@
     if (!state.run.start || !state.run.end || state.run.start >= state.run.end) { toast("請確認回測起訖日期"); return; }
     const explicit = state.run.explicit_ids.split(/[\s,]+/).map(x => x.trim()).filter(Boolean);
     if (state.run.universe_mode === "explicit" && !explicit.length) { toast("請至少輸入一個股票代號"); return; }
-    const button = $("builder-next"); button.disabled = true; button.textContent = "儲存設定…";
+    if (builderBusy) return;
+    builderBusy = true;
+    const controls = [...$("builder-form").querySelectorAll("input, select, textarea, button")];
+    const disabled = controls.map(el => el.disabled); controls.forEach(el => el.disabled = true);
+    const button = $("builder-next"); button.textContent = "儲存設定…";
     try {
       state.strategy = await api(`/api/strategy-lab/strategies/${state.strategy.id}`, { method: "PATCH", body: {
         name: $("strategy-name").value.trim(), description: $("strategy-description").value.trim() || null,
@@ -516,8 +532,10 @@
         min_observations: getPath(state.params, "universe.min_liquidity_observations") };
       button.textContent = "排入回測…";
       const queued = await api(`/api/strategy-lab/strategies/${state.strategy.id}/runs`, { method: "POST", body });
+      builderDirty = builderBusy = false;
       location.href = `strategy.html?id=${state.strategy.id}&run=${queued.run_id}`;
-    } catch (error) { toastError(`無法執行：${error.message}`); button.disabled = false; button.textContent = "執行回測"; }
+    } catch (error) { toastError(`無法執行，設定已保留：${error.message}`); }
+    finally { builderBusy = false; controls.forEach((el,i) => el.disabled = disabled[i]); button.textContent = "執行回測"; }
   }
 
   async function resultPage(strategyId, runId) {
@@ -568,7 +586,7 @@
     const coveragePct = coverage.stocks_requested ? coverage.stocks_with_quotes / coverage.stocks_requested * 100 : 0;
     const warningCount = (result.warnings || []).length + (coverage.notes || []).length + 1;
     setRoot(`<header class="result-header card research-header"><div><a class="back-link" href="strategy.html">← 策略實驗室</a>
-        <div class="eyebrow">歷史證據 / 回測</div><h1>${esc(strategy.name)}</h1>
+        <h1>${esc(strategy.name)}</h1>
         <p>${esc(label(strategy.template_key))} · 版本 ${esc(request.strategy_version_no || "—")}</p></div>
       <dl class="result-meta"><div><dt>研究期間</dt><dd>${esc(request.start)} — ${esc(request.end)}</dd></div>
         <div><dt>比較基準</dt><dd>${esc(label(request.benchmark_id || result.metadata?.benchmark_id))}</dd></div>
@@ -577,7 +595,7 @@
       <div class="head-actions"><a class="btn" href="strategy.html?walkforward=new&id=${strategy.id}&source_run=${result.id}">樣本外驗證（OOS）</a>
         <a class="btn ghost" href="strategy.html?optimization=new&id=${strategy.id}&source_run=${result.id}">參數穩健性</a>
         <a class="btn ghost" href="strategy.html?id=${strategy.id}&edit=1">設定</a></div>
-      ${researchMetadata([["研究身分", strategy.name], ["版本", `v${request.strategy_version_no || "—"}`], ["證據型別", "歷史回測"], ["研究期間", `${request.start || "—"} — ${request.end || "—"}`], ["來源", `回測 #${result.id || "—"} · ${modeLabel(result.publication_mode)}`], ["目前階段", "回測"], ["下一步", "檢查資料品質，再做參數穩健性研究與樣本外驗證"]])}</header>
+      <details class="research-provenance"><summary>來源與下一步</summary><p>回測 #${esc(result.id)} · 歷史樣本內證據。確認資料品質後，再進行穩健性研究與樣本外驗證。</p></details></header>
       <div class="research-disclosure" role="note"><strong>歷史回測 ≠ 未來預測</strong><span>先閱讀資料覆蓋、公告模式與警示，再解讀績效。這些數值尚不是獨立 OOS 證據。</span></div>
       <section class="kpi-grid" aria-label="主要績效指標">
         ${kpi("CAGR", m.cagr, "pct")} ${kpi("Sharpe", m.sharpe)} ${kpi("最大回撤", m.max_drawdown, "pct")}
@@ -646,7 +664,7 @@
     const rows = [...flatten(request.template_config), ...flatten(request.backtest_config, "backtest")];
     return `<div class="scroll-x"><table class="data"><thead><tr><th class="l">參數</th><th class="l">數值</th></tr></thead><tbody>
       ${rows.map(([path, value]) => `<tr><td class="l">${esc(path.split(".").map(label).join(" / "))}</td>
-        <td class="l mono">${esc(Array.isArray(value) ? value.join(", ") || "—" : typeof value === "boolean" ? (value ? "是" : "否") : value)}</td></tr>`).join("")}</tbody></table></div>`;
+        <td class="l mono">${esc(researchValue(value))}</td></tr>`).join("")}</tbody></table></div><details class="more"><summary>原始執行參數</summary><pre class="contract-view">${esc(JSON.stringify({template_config:request.template_config, backtest_config:request.backtest_config}, null, 2))}</pre></details>`;
   }
 
   function warningsPanel(result, coveragePct) {

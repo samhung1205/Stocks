@@ -75,6 +75,21 @@ Reports under `docs/history/` are dated evidence. Their test counts, future-work
 - **Actual holdings:** a Portfolio target's `actual_value` is manual or NULL, never research equity or `journal.positions()`. The platform does not execute trades.
 - **Nullable compatibility:** Stage I1's six added target columns remain nullable; NULL `source_type` retains legacy ETF semantics. Do not backfill existing rows.
 
+## Stock evidence UI
+
+- **Sparse OHLC remains unknown:** `stock_view.technical_summary()` returns nullable `high_52w` / `low_52w` when no extremes are observed, never fabricated zero/sentinel prices. The stock UI must distinguish unknown moving-average positions from bearish positions, omit incomplete candles, and keep the observed close/data table available.
+- **Equivalent evidence:** `web/stock.html` + `web/js/stock.js` use the same loaded rows for charts and accessible numerical tables. Keep dates, units, nulls and sample-period limits visible. A failed overview must hide dependent research/actions; a failed tab must allow local retry.
+
+## Journal research assistant
+
+- **Local evidence, human review:** `journal.draft_plan()` is read-only and uses existing local market/fundamental data. It does not call an external model, create a plan or record a trade. Unknown market consensus, personal advantage and event dates remain explicit pending questions. Reference prices are raw closes; maximum loss and target price are user inputs.
+- **Original reasons remain reviewable:** `GET /api/journal/plans/{plan_id}` reads the authenticated owner's saved answers, including closed plans. Admin access never bypasses ownership. Refreshing an assistant draft must not rewrite stored plans or overwrite the user's edited fields silently.
+- **Private drafts:** unsaved journal work stays in page memory, with dirty-state/leave protection and explicit confirmation before replacement. Do not add cross-account browser storage or silently send financial notes to an external service. The current human-review checkbox is a UI step, not a persisted server attestation.
+
+## Unsaved interface work
+
+- **Page-memory drafts:** Planner and Strategy Lab use `protectUnsaved()` from `web/js/common.js`; trial calculations are not saves. Planner switching must confirm discard, failed saves must preserve input, and an older save response must not overwrite newer edits. Do not silently add browser-storage persistence. Strategy saves use the existing immutable-version API; preserve all supported execution-policy values when editing.
+
 ## Working rules and completion
 
 - Before editing a service, read its module docstring and relevant tests (not necessarily a one-to-one filename).

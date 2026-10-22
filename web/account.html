@@ -8,10 +8,10 @@
 </head>
 <body data-account-page="account">
 <main class="account-main">
-  <header class="desk-page-head"><div><h1>帳號與存取</h1><p class="muted">管理登入方式與工作區成員。</p></div><button id="logout-button" class="ghost" type="button">登出</button></header>
+  <header class="desk-page-head"><div><h1>帳號與存取</h1><p class="muted" id="account-description">管理自己的登入方式。</p></div><button id="logout-button" class="ghost" type="button">登出</button></header>
   <p id="account-identity" class="account-identity">正在讀取帳號…</p>
   <p id="account-message" class="account-message" role="status" aria-live="polite" tabindex="-1"></p>
-  <section class="account-section" aria-labelledby="password-title">
+  <section class="account-section account-password-section" aria-labelledby="password-title">
     <div><h2 id="password-title">修改密碼</h2><p class="muted">儲存後會登出所有裝置，請使用新密碼重新登入。</p></div>
     <form id="change-password-form" class="account-password-form">
       <label for="current-password">目前密碼</label><input id="current-password" type="password" autocomplete="current-password" required maxlength="128">

@@ -11,7 +11,7 @@
 <main class="screen-main">
   <header class="desk-page-head">
     <div>
-      <div class="desk-kicker">市場研究 / 篩選工作紙</div>
+
       <h1>全市場篩選器</h1>
       <p class="muted">以已知資料條件縮小研究範圍；結果是候選清單，不是投資建議。</p>
     </div>
@@ -21,24 +21,11 @@
   <section class="card screen-filter" aria-labelledby="filter-heading">
     <div class="screen-filter-head"><h2 id="filter-heading">篩選條件</h2><span class="muted">空白欄位不設限制</span></div>
     <div class="flex screen-presets" id="presets"></div>
-    <div class="grid cols-4 mt">
-      <div><label for="p-rev_yoy_min">月營收 YoY ≥ (%)</label><input type="number" id="p-rev_yoy_min" placeholder="如 10"></div>
-      <div><label for="p-insti_buy_days">法人連續買超 ≥ (天)</label><input type="number" id="p-insti_buy_days" placeholder="如 3"></div>
-      <div><label for="p-pe_max">本益比 ≤</label><input type="number" id="p-pe_max" placeholder="如 15"></div>
-      <div><label for="p-yield_min">殖利率 ≥ (%)</label><input type="number" id="p-yield_min" placeholder="如 4"></div>
-      <div><label for="p-pb_max">股價淨值比 ≤</label><input type="number" id="p-pb_max" placeholder="如 2"></div>
-      <div><label for="p-near_52w_high">距52週高 ≤ (%)</label><input type="number" id="p-near_52w_high" placeholder="如 5"></div>
-      <div><label for="p-vol_surge">量比 ≥ (倍)</label><input type="number" id="p-vol_surge" placeholder="如 2"></div>
-      <div><label for="p-min_amount">日成交額 ≥ (百萬)</label><input type="number" id="p-min_amount" placeholder="如 50（流動性門檻）"></div>
+    <div class="screen-groups">
+      <fieldset><legend>營運成長</legend><div><label for="p-rev_yoy_min">月營收 YoY ≥ (%)</label><input type="number" id="p-rev_yoy_min" placeholder="如 10"></div><div class="screen-checks"><label><input type="checkbox" id="p-rev_turn_pos"> 營收YoY由負轉正</label><label><input type="checkbox" id="p-rev_accel"> 營收YoY連3月加速</label></div></fieldset>
+      <fieldset><legend>估值與股息</legend><div><label for="p-pe_max">本益比 ≤</label><input type="number" id="p-pe_max" placeholder="如 15"></div><div><label for="p-yield_min">殖利率 ≥ (%)</label><input type="number" id="p-yield_min" placeholder="如 4"></div><details class="more" id="valuation-filters"><summary>股價淨值比條件</summary><div><label for="p-pb_max">股價淨值比 ≤</label><input type="number" id="p-pb_max" placeholder="如 2"></div></details></fieldset>
+      <fieldset><legend>交易與範圍</legend><div><label for="p-min_amount">日成交額 ≥ (百萬)</label><input type="number" id="p-min_amount" placeholder="如 50（流動性門檻）"></div><label><input type="checkbox" id="p-exclude_etf" checked> 排除ETF</label><details class="more" id="trading-filters"><summary>法人、量能與趨勢條件</summary><div><label for="p-insti_buy_days">法人連續買超 ≥ (天)</label><input type="number" id="p-insti_buy_days" placeholder="如 3"></div><div><label for="p-near_52w_high">距52週高 ≤ (%)</label><input type="number" id="p-near_52w_high" placeholder="如 5"></div><div><label for="p-vol_surge">量比 ≥ (倍)</label><input type="number" id="p-vol_surge" placeholder="如 2"></div><div class="screen-checks"><label><input type="checkbox" id="p-above_ma60"> 站上60日線</label><label><input type="checkbox" id="p-above_ma240"> 站上年線</label></div></details></fieldset>
     </div>
-    <fieldset class="screen-checks">
-      <legend>其他條件</legend>
-      <label><input type="checkbox" id="p-above_ma60"> 站上60日線</label>
-      <label><input type="checkbox" id="p-above_ma240"> 站上年線</label>
-      <label><input type="checkbox" id="p-rev_turn_pos"> 營收YoY由負轉正</label>
-      <label><input type="checkbox" id="p-rev_accel"> 營收YoY連3月加速</label>
-      <label><input type="checkbox" id="p-exclude_etf" checked> 排除ETF</label>
-    </fieldset>
     <div class="screen-actions">
       <button id="btn-run" type="button">執行篩選</button>
       <button id="btn-clear" type="button" class="ghost">清除條件</button>
@@ -77,9 +64,9 @@ const CHECKS = ["above_ma60","above_ma240","rev_turn_pos","rev_accel","exclude_e
 async function loadPresets() {
   const presets = await api("/api/screener/presets");
   const el = document.getElementById("presets");
-  el.innerHTML = `<span class="muted">快速套用：</span>` +
+  el.innerHTML = `<span class="muted">套用並立即篩選：</span>` +
     Object.entries(presets).map(([key, p]) =>
-      `<button type="button" class="ghost small" data-key="${key}">${p.label}</button>`).join("");
+      `<button type="button" class="ghost small" data-key="${key}">${p.label} · 執行</button>`).join("");
   el.addEventListener("click", e => {
     const key = e.target.dataset.key;
     if (!key) return;
@@ -90,6 +77,7 @@ async function loadPresets() {
       if (!inp) continue;
       if (inp.type === "checkbox") inp.checked = !!v; else inp.value = v;
     }
+    revealFilters();
     runScreen();
   });
 }
@@ -99,6 +87,11 @@ function clearForm() {
   CHECKS.forEach(c => document.getElementById("p-" + c).checked = c === "exclude_etf");
 }
 
+function revealFilters() {
+  document.querySelectorAll(".screen-groups details").forEach(detail => {
+    detail.open = [...detail.querySelectorAll("input")].some(el => el.type === "checkbox" ? el.checked : el.value !== "");
+  });
+}
 function collectParams() {
   const params = {};
   FIELDS.forEach(f => {
@@ -222,7 +215,7 @@ document.getElementById("btn-clear").addEventListener("click", () => {
   });
 });
 loadPresets();
-if (readState()) runScreen(true);
+if (readState()) { revealFilters(); runScreen(true); }
 </script>
 </body>
 </html>

@@ -264,7 +264,7 @@ All routes are under `/api`. See `app/api/routes.py` for exact signatures.
 | `/stocks/{id}/...` | Stock detail: kline, revenue, financials, chips, valuation, technical, alerts, score |
 | `/screener` | Whole-market screener presets + run |
 | `/watchlist` | Watchlist CRUD |
-| `/journal` | Trade plans, trades, positions, performance |
+| `/journal` | Trade plans, owner-scoped original-plan detail, local evidence drafting, trades, positions, performance |
 | `/finance` | Financial planning: universe, simulate, profiles; `/finance/portfolio-evidence` (Stage I1, read-only Strategy Portfolio evidence for a Planner investment source) |
 | `/admin` | Data maintenance: sync, update, backfill (incl. `/admin/backfill-for-backtest`, `/admin/data-universe`); `/admin/data-freshness` (Stage L1, read-only auto-refresh/freshness status contract) |
 | `/strategy-lab/templates`, `/strategy-lab/strategies`, `/strategy-lab/runs` | Strategy Lab CRUD + backtest runs |
@@ -274,3 +274,28 @@ All routes are under `/api`. See `app/api/routes.py` for exact signatures.
 | `/strategy-lab/portfolios`, `/strategy-lab/portfolio-research-runs` | Strategy Portfolio CRUD/versioning/clone/archive + research runs (incl. `.../research-runs/{run_id}/cancel`\|`/resume`) |
 
 `GET /api/market/freshness` is a member-safe subset without runner logs/errors/config. Forced stock fetching is admin-only `POST /api/stocks/{stock_id}/deep`; GET `force=true` no longer performs it. `web/login.html` and `web/account.html` provide account flows; `common.js` adds the account nav, attaches CSRF to writes and redirects expired sessions to login. Hiding admin UI supplements backend enforcement.
+
+### Journal evidence and original-plan readback
+
+`web/js/journal.js` owns the journal workbench's transient draft, review checkbox, dirty/leave state and original-plan disclosure. `GET /api/journal/draft-plan/{stock_id}?focus=observe` calls `journal.draft_plan()` without writing a plan or contacting an external model. Supported focus values are `observe`, `growth`, `quality`, `trend`, `valuation`. The response retains the original q5/q6/q7 and reference-price keys, and adds seven draft questions, dated evidence, warnings, generation time and `assistant_mode: local_evidence`. Unverified consensus, personal edge and catalyst dates are explicitly pending; no risk budget or target price is generated. The UI preserves manually edited fields on refresh and requires review before its save action. This checkbox is not a stored server attestation.
+
+`POST /api/journal/plans` keeps the existing nullable question/price columns and incomplete-plan compatibility; no schema migration is introduced. Saved question text is the original record and is not refreshed from current data. `GET /api/journal/plans/{plan_id}` uses owner-scoped `query_one()` and returns the saved answers, stock name, missing items and explicitly pending questions, including closed/cancelled records. A missing or foreign plan returns 404, including for administrators. The list supports open/closed/cancelled/all review; `POST /api/journal/plans/{plan_id}/status` accepts only `open`, `closed`, `cancelled`. Plan creation remains separate from actual trade recording.
+
+### Stock charts and equivalent evidence (2026-10-23)
+
+`web/stock.html` + `web/js/stock.js` load the overview before enabling the dependent research and stock actions. Missing IDs, unknown stocks and failed overview requests end in one recoverable state (retry, global search, dashboard). Six semantic tab/panel pairs use roving tabindex, Left/Right and Home/End; tab-level errors remain retryable without replacing the other research sections.
+
+Each loaded chart dataset also supplies dated/period-labeled text and a numerical table, including loaded K-line OHLC/volume and MAs, revenue, margins/EPS, cashflow/working capital, valuations, and institutional/margin series. Table units distinguish shares from lots. Incomplete OHLC candles are omitted without inventing open/high/low; the observed close and calculable MAs remain. Missing institutional totals stop the frontend cumulative series rather than treating a missing amount as zero. Missing ECharts still permits the text/table workflow. Charts remain on demand; no new data fetch service, schema or endpoint was introduced.
+
+`GET /api/stocks/{stock_id}/technical` keeps its existing shape. Its `high_52w` and `low_52w` are now `null` when there are no observed highs/lows (previously high could become 0 and all-missing lows raised an exception). Available extrema still use observed values only. The UI describes the available observation count and makes no full-year coverage claim; unknown `above_ma60` / `above_ma240` is not displayed as a bearish condition. Valuation percentiles retain the existing service's historical-sample calculation; the plotted/table period is disclosed and is not claimed to cover five years.
+
+
+### Unsaved work and research presentation (2026-10-23)
+
+`web/js/common.js:protectUnsaved()` installs conditional beforeunload protection and returns a discard-confirmation helper. Planner uses edit/saved revisions and profile/simulation generations: simulations do not mark a draft saved; profile changes confirm discard; failures retain inputs; an in-flight save stores a snapshot and marks only that revision saved. A later edit remains dirty. Staged investment-source inputs must be confirmed or cleared before saving. Profile replacement temporarily makes inputs inert; successful creation resets staged sources and returns to step 1.
+
+Strategy's eight-step builder tracks dirty and request-busy states, keeps input on failure, and uses the existing definition PATCH/run POST flow. Creating a base strategy and saving a definition remain explicit existing server writes. Existing `partial` execution policy is preserved as a selectable value. No new schema, endpoints, research calculation or version contract is introduced.
+
+Private drafts stay in page memory only. Browser confirmation can prevent accidental navigation, but accepted navigation, browser crashes and process termination lose unsaved work. There is no localStorage/sessionStorage draft cache or cross-device recovery; adding persistence requires an explicit owner-scoped retention/deletion design.
+
+Research summaries precede expandable provenance; executed version IDs and raw parameters/protocols remain accessible. Portfolio URLs with a run default to research results, with execution/history in a secondary disclosure. Creation shows selectable completed OOS sources from the existing catalog (at most 200 recent jobs), including valid no-candidate outcomes; this is source availability, not statistical allocation readiness. Critical warnings stay critical and open their disclosure. Mobile detail navigation has an equivalent select. Planner result sections link back to related input steps.

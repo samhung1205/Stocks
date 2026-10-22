@@ -10,12 +10,12 @@
 <body>
 <main class="watchlist-main">
   <header class="desk-page-head">
-    <div><div class="desk-kicker">市場研究 / 觀察卷宗</div><h1>觀察名單</h1><p class="muted">依決策狀態整理研究標的；盤中報價僅作當下參考。</p></div>
+    <div><h1>觀察名單</h1><p class="muted">依決策狀態整理研究標的；盤中報價僅作當下參考。</p></div>
     <div class="head-actions"><button id="btn-rt" class="ghost" type="button">更新盤中報價</button><span class="muted" id="rt-info" aria-live="polite"></span></div>
   </header>
 
   <div id="watch-summary" class="watch-summary" aria-label="觀察名單摘要"></div>
-  <div id="tiers"></div>
+  <p id="watch-status" role="status" aria-live="polite"></p><div id="tiers"></div>
 </main>
 
 <script src="js/common.js"></script>
@@ -23,11 +23,11 @@
 const TIERS = [["holding", "持有中"], ["waiting", "等買點"], ["research", "研究中"]];
 let allRows = [];
 
-async function load() {
+async function load(focusSid = null) {
   try { allRows = await api("/api/watchlist"); }
   catch (err) {
     document.getElementById("watch-summary").hidden = true;
-    document.getElementById("tiers").innerHTML = `<section class="card state-card" role="alert"><h2>觀察名單無法載入</h2><p>${String(err.message || err)}</p><button type="button" onclick="load()">重新載入</button></section>`;
+    document.getElementById("tiers").innerHTML = `<section class="card state-card" role="alert"><h2>觀察名單無法載入</h2><p>${escapeHtml(err.message || err)}</p><button type="button" onclick="load()">重新載入</button></section>`;
     return;
   }
   const wrap = document.getElementById("tiers");
@@ -55,16 +55,16 @@ async function load() {
           <tr data-sid="${r.stock_id}">
             <td class="l"><a href="stock.html?id=${r.stock_id}&from=watchlist">${r.stock_id} ${r.name}</a></td>
             <td class="l muted">${r.industry || "—"}</td>
-            <td>${fmt.num(r.close)}</td>
+            <td>${fmt.num(r.close)}<small class="row-note neutral">${escapeHtml(r.qdate || "無收盤日期")}</small></td>
             <td class="${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
             <td class="rt-cell muted">—</td>
             <td>${fmt.num(r.pe, 1)}</td>
             <td>${fmt.pct(r.dividend_yield)}</td>
             <td>${r.alerts.length
-              ? `<span class="badge warn" title="${r.alerts.map(a => a.message).join("&#10;")}">${r.alerts.length} 項</span>`
+              ? `<details class="watch-alerts"><summary>${r.alerts.length} 項警訊<span class="sr-only">：${escapeHtml(r.stock_id)} ${escapeHtml(r.name)}</span></summary><ul>${r.alerts.map(a => `<li>${escapeHtml(a.message)}</li>`).join("")}</ul></details>`
               : '<span class="muted">—</span>'}</td>
             <td class="l note-cell" style="max-width:220px;white-space:normal">
-              <span class="muted">${r.note || ""}</span></td>
+              <span class="muted">${escapeHtml(r.note || "")}</span></td>
             <td>
               <select class="small tier-sel" style="width:96px" aria-label="${r.stock_id} ${r.name} 觀察分級">
                 ${TIERS.map(([t, l]) => `<option value="${t}" ${t === r.tier ? "selected" : ""}>${l}</option>`).join("")}
@@ -76,14 +76,17 @@ async function load() {
     wrap.appendChild(card);
   }
 
+  if (focusSid) wrap.querySelector(`tr[data-sid="${CSS.escape(focusSid)}"] .tier-sel`)?.focus();
   wrap.querySelectorAll(".tier-sel").forEach(sel => sel.addEventListener("change", async e => {
     const sid = e.target.closest("tr").dataset.sid;
     const row = allRows.find(r => r.stock_id === sid);
+    const tier = e.target.value; e.target.disabled = true;
     try {
       await api(`/api/watchlist/${sid}`, { method: "POST",
         body: { tier: e.target.value, note: row?.note || "" } });
-    } catch (err) { toastError(`${sid} 分級未更新：${err.message}`); }
-    load();
+      await load(sid);
+      document.getElementById("watch-status").textContent = `${sid} 已移至「${TIERS.find(([key]) => key === tier)?.[1]}」。`;
+    } catch (err) { e.target.value = row.tier; e.target.disabled = false; toastError(`${sid} 分級未更新：${err.message}`); }
   }));
   wrap.querySelectorAll(".btn-del").forEach(btn => btn.addEventListener("click", async e => {
     const sid = e.target.closest("tr").dataset.sid;

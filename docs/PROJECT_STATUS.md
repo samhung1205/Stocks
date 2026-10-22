@@ -4,6 +4,10 @@ Working-tree baseline through 2026-10-06; instruction/DB-boundary audit on 2026-
 
 ## Completed stages (A → L1.1)
 
+2026-10-22 UI follow-up: shared stock search now supports arrow-key selection, Enter, Escape, combobox state announcements, composition handling and stale-request cancellation. All non-homepage surfaces were reviewed using isolated synthetic data; 43 browser checks passed for search. Outstanding journal review, stock-error, unsaved-work and chart-accessibility issues are recorded in the [dated UI review](history/ui-review-other-pages-2026-10-22.md); these review findings are not claims of completed fixes.
+
+2026-10-22 batch A: the journal now has a local evidence assistant with human review, dated facts and explicit pending questions, plus owner-scoped original-plan readback including closed plans. It preserves edited drafts, warns about unsaved work and keeps planning separate from actual trades. No external model or schema migration was added. Relevant backend tests (39) and browser workflow checks (28) passed against isolated data; see the [batch A report](history/ui-batch-a-journal-assistant-2026-10-22.md) and [remaining UI work](UI_IMPROVEMENTS.md). Those follow-ups were subsequently completed in batches B/C below.
+
 | Stage | Delivered |
 |---|---|
 | A / A+ | Data correctness foundation: publication-date contract, adjusted-price separation, corporate-action resolution, trading calendar, historical backfill job system |
@@ -34,6 +38,14 @@ Each stage's own report (`docs/history/stage-<n>-*.md`) is the detailed, point-i
 - Railway remains one Uvicorn worker/replica, persistent `/data`, Taiwan-time scheduling. Account deployment `17331cbf` succeeded on 2026-10-14: original owner HTTPS login, admin/private reads, Secure cookies, CSRF and logout revocation passed. Anonymous access is limited to health and minimal account-entry surfaces. See [Railway deployment record](railway-deployment.md).
 - Local and Railway SQLite files remain separate, including subsequent password changes. Both were backed up and migrated independently; all original values in the 24 private tables were preserved and old roots assigned to owner id=1. Market facts are shared within each deployment; private records are per-account.
 - At the last data verification on 2026-10-05, daily refresh was `partial`: 2026-09-29 and 2026-09-30 sessions remained missing; valuation and research benchmark dates lagged. No later data check is recorded here. Read the live freshness response before claiming the cloud data is current.
+
+## UI batch B (2026-10-23, local verification)
+
+Stock-page recovery, dated text/numerical alternatives for all six chart tabs, keyboard tab semantics and descriptive governance links are implemented. Sparse OHLC no longer fails technical summary or displays unknown MA positions as bearish; margin-only evidence remains readable. This is a local source/UI delivery, not a Railway deployment or a claim of fresh market data. See [batch B report](history/ui-batch-b-stock-evidence-2026-10-23.md) and [UI delivery tracker](UI_IMPROVEMENTS.md).
+
+## UI batch C and remaining backlog (2026-10-23, local verification)
+
+All selected items in the [UI tracker](UI_IMPROVEMENTS.md) are now delivered locally: Planner/Strategy unsaved-work protection, research conclusion/provenance hierarchy, source readiness and warning explanations, mobile Portfolio navigation, grouped screening, accessible watchlist feedback, Planner reciprocal navigation and account recovery/visibility controls. 75 browser checks passed; backend regression: 70 passed and 21 fixture-gated tests skipped. Page-memory drafts are intentional; cross-reload/device draft persistence is not implemented. No deployment or real DB migration was performed. See the [batch C report](history/ui-batch-c-remaining-2026-10-23.md).
 
 ## Currently usable features
 

@@ -192,8 +192,8 @@ def remove_watch(stock_id: str):
 
 # ── 交易日誌 ────────────────────────────────────────────
 @router.get("/journal/draft-plan/{stock_id}")
-def draft_plan(stock_id: str):
-    return journal.draft_plan(stock_id)
+def draft_plan(stock_id: str, focus: str = "observe"):
+    return _lab(journal.draft_plan, stock_id, focus)
 
 
 @router.post("/journal/position-size")
@@ -217,6 +217,11 @@ def create_plan(payload: dict):
     pid = journal.create_plan(payload)
     plan = journal.get_plan(pid)
     return {"id": pid, "missing": journal.plan_completeness(plan)}
+
+
+@router.get("/journal/plans/{plan_id}")
+def plan_detail(plan_id: int):
+    return _lab(journal.plan_detail, plan_id)
 
 
 @router.post("/journal/plans/{plan_id}/status")

@@ -14,6 +14,7 @@
 | 時點資料、OOS、版本、Portfolio 等研究契約 | [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md)、[AGENTS.md](../AGENTS.md) | 契約版本、相關 Stage 報告與測試 |
 | Railway 部署與最後驗證狀態 | [railway-deployment.md](railway-deployment.md)、[DEPLOY.md](../DEPLOY.md) | 線上健康與資料 freshness；紀錄是 dated snapshot |
 | AI 或開發代理要修改專案 | [AGENTS.md](../AGENTS.md) | `CLAUDE.md` 僅含 `@AGENTS.md` 相容匯入；共用規則只維護一份 |
+| 已選定的跨頁 UI 改善順序與完成狀態 | [UI_IMPROVEMENTS.md](UI_IMPROVEMENTS.md) | 2026-10-22 評估報告與當批驗證 |
 
 正式 `v1.0.0` tag 是 Stage K2 checkpoint；本工作樹後續的 L1/L1.1 與 Railway 部署不可倒寫成 v1.0.0 已包含的功能。更新現行文件時，依程式和實測結果同步修正；不要只複製 Stage 報告的舊敘述。
 
@@ -23,6 +24,10 @@
 - `coverage-gate-report.md`、`strategy-lab-integration-audit.md`、`documentation-sync-h1-report.md`、`product-sync-h1-5-report.md`：當時的覆蓋率、整合與文件同步稽核。
 - [GitHub 上傳前隱私稽核](history/github-publication-privacy-audit.md)：2026-10-12 排除資料與圖片、保留本機 checkpoint、乾淨提交及驗證紀錄。
 - [README 使用手冊整理報告](history/readme-user-manual-reorganization-report.md)：2026-10-08 使用手冊改寫、技術內容移轉與驗證紀錄。
+- [其他頁面設計評估與搜尋改善](history/ui-review-other-pages-2026-10-22.md)：2026-10-22 九個 HTML／十一個介面的評估、優先待辦，以及共用搜尋鍵盤操作的實作與驗證。
+- [第一批 A：日誌回顧與本機研究助手](history/ui-batch-a-journal-assistant-2026-10-22.md)：七項證據草稿、人工確認、原始計畫回看與當批驗證；後續依 [UI 改善清單](UI_IMPROVEMENTS.md) 追蹤。
+- [第二批 B：個股錯誤與等價證據](history/ui-batch-b-stock-evidence-2026-10-23.md)：恢復入口、六個面向的文字／數值替代、鍵盤頁籤及稀疏 OHLC 處理與驗證。
+- [第三批 C 與剩餘項目](history/ui-batch-c-remaining-2026-10-23.md)：草稿保護、研究摘要與來源、分組篩選、觀察名單、規劃導覽及帳號操作的完成與驗證。
 - `final-design-direction.md`、`k1a-palette-comparison.md`：設計探索與比較；目前 UI 採 K2 完成的樣式，這些檔案不代表待實作規格。
 
 歷史紀錄保留供查核研究決策及回歸原因，不作為「目前狀態」的獨立真相來源。`assets/k1a/` 是本機歷史截圖，因可能含財務畫面而不納入 GitHub；`output/` 與 `.playwright-cli/` 是本機產物，不屬於版控文件，歷史報告若指向它們可能無法在新 checkout 顯示。

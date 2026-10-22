@@ -24,6 +24,15 @@
     if (el('new-password').value !== el('confirm-password').value) throw new Error('兩次輸入的密碼不一致');
     return el('new-password').value;
   }
+  document.querySelectorAll('input[type="password"]').forEach(input => {
+    const wrap = document.createElement('div'); wrap.className = 'password-control';
+    input.before(wrap); wrap.append(input);
+    const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'ghost small password-toggle';
+    const label = document.querySelector(`label[for="${input.id}"]`)?.textContent || '密碼';
+    toggle.textContent = '顯示'; toggle.setAttribute('aria-label', `顯示${label}`); toggle.setAttribute('aria-controls', input.id); toggle.setAttribute('aria-pressed','false');
+    toggle.onclick = () => { const show = input.type === 'password'; input.type = show ? 'text' : 'password'; toggle.textContent = show ? '隱藏' : '顯示'; toggle.setAttribute('aria-label', `${show ? '隱藏' : '顯示'}${label}`); toggle.setAttribute('aria-pressed',String(show)); };
+    wrap.append(toggle);
+  });
   if (document.body.dataset.accountPage === 'login') {
     const fragment = new URLSearchParams(location.hash.slice(1));
     const token = fragment.get('invite') || fragment.get('reset');
@@ -39,8 +48,10 @@
       location.replace('/index.html');
     });
     form('complete-form', async () => {
-      await request('/api/auth/complete', 'POST', {token, password: newPassword()});
-      el('complete-form').reset(); el('complete-form').hidden = true; el('login-form').hidden = false;
+      const password = newPassword();
+      try { await request('/api/auth/complete', 'POST', {token, password}); }
+      catch (error) { el('token-recovery').hidden = false; throw error; }
+      el('token-recovery').hidden = true; el('complete-form').reset(); el('complete-form').hidden = true; el('login-form').hidden = false;
       el('form-title').textContent = '密碼已設定'; el('form-description').textContent = '請使用你的帳號與新密碼登入。';
       el('username').focus();
     });
@@ -59,11 +70,11 @@
       [user.display_name + ' / ' + user.username, user.role === 'admin' ? '管理員' : '成員', user.active ? '已啟用' : user.configured ? '已停用' : '待設定密碼'].forEach(value => { const td = document.createElement('td'); td.textContent = value; tr.append(td); });
       const td = document.createElement('td'); const actions = document.createElement('div'); actions.className = 'account-actions';
       function action(label, method, suffix, payload, confirmation) {
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'ghost small'; button.textContent = label;
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'ghost small'; button.textContent = label; button.setAttribute('aria-label', `${label}：${user.display_name} / ${user.username}`);
         button.addEventListener('click', async () => {
           if (confirmation && !confirm(confirmation)) return;
           button.disabled = true; message('');
-          try { const result = await request(`/api/admin/accounts/${user.id}${suffix}`, method, payload || {}); if (result.link) await showLink(result); else { el('issued-link').hidden = true; el('token-link').value = ''; } await loadMembers(); message(label + '完成'); }
+          try { const result = await request(`/api/admin/accounts/${user.id}${suffix}`, method, payload || {}); if (result.link) await showLink(result); else { el('issued-link').hidden = true; el('token-link').value = ''; } await loadMembers(); message(`${user.display_name}：${label}完成`); }
           catch (error) { message(error.message, true); } finally { button.disabled = false; }
         }); actions.append(button);
       }
@@ -81,6 +92,7 @@
   window.accountReady.then(async user => {
     el('account-identity').textContent = `${user.display_name} / ${user.username || ''} · ${user.role === 'admin' ? '管理員' : '成員'}`;
     if (user.auth_mode === 'basic') { el('change-password-form').hidden = true; el('logout-button').hidden = true; message('目前為舊版單人模式。請先依開發文件啟用帳號系統。'); return; }
-    if (user.role === 'admin') { el('member-management').hidden = false; await loadMembers(); }
+    el('account-description').textContent = user.role === 'admin' ? '管理自己的登入方式，以及成員邀請與存取權限。' : '管理自己的登入方式；邀請與帳號恢復請聯絡管理員。';
+    if (user.role === 'admin') { el('member-management').hidden = false; document.querySelector('.account-password-section').before(el('member-management')); await loadMembers(); }
   }).catch(error => message(error.message, true));
 })();

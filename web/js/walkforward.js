@@ -15,6 +15,7 @@
     insufficient_data: "資料不足", completed: "已完成", running: "執行中", queued: "排隊中",
     failed: "失敗", cancelled: "已取消", evaluated: "已評估", no_candidate: "無穩定候選（no_candidate）",
     strict: "嚴格（Strict）", assumed: "假設（Assumed）", expanding: "擴展", rolling: "滾動",
+    "wf-freeze/f0.5/2": "連續候選區域中心點凍結", partial: "可成交部分先執行", next_available: "等待下一個可成交日", cancel: "取消缺價訂單", each_fold: "每個訓練窗重新研究",
     critical: "重大", caution: "注意", info: "資訊",
     training: "訓練中", frozen: "已凍結候選", test_opened: "測試期開始", oos_done: "OOS 完成",
     cash: "現金", prior_oos_terminal: "前一個 fold 的 OOS 終端狀態",
@@ -52,9 +53,9 @@
     loading("載入樣本外驗證", "整理獨立 OOS 研究紀錄。");
     try {
       const jobs = await api("/api/strategy-lab/walkforward/jobs?limit=50");
-      setRoot(`<header class="lab-page-head"><div><a class="back-link" href="strategy.html">← 策略實驗室</a><div class="eyebrow">策略研究 / 樣本外（OOS）</div><h1>樣本外驗證</h1><p class="muted">檢查樣本內研究結果到了真正的樣本外（OOS）期間是否仍然成立；不做績效排行。</p></div></header>${evidenceNotice()}
+      setRoot(`<header class="lab-page-head"><div><a class="back-link" href="strategy.html">← 策略實驗室</a><h1>樣本外驗證</h1><p class="muted">檢查樣本內研究結果到了真正的樣本外（OOS）期間是否仍然成立；不做績效排行。</p></div></header>${evidenceNotice()}
         <section class="card lab-section" aria-labelledby="wf-jobs-title"><div class="section-head"><div><h2 id="wf-jobs-title">研究紀錄</h2><p class="muted">依建立時間排列。請從策略回測結果或參數穩健性研究建立新的揭露試驗。</p></div></div>
-        ${jobs.length ? jobTable(jobs) : `<div class="empty-state"><h3>尚無樣本外驗證研究</h3><p>先開啟一份策略回測結果或參數穩健性研究，再建立 OOS 試驗。</p></div>`}</section>`);
+        ${jobs.length ? jobTable(jobs) : `<div class="empty-state"><h3>尚無樣本外驗證研究</h3><p>先開啟一份策略回測結果或參數穩健性研究，再建立 OOS 試驗。</p><div class="flex"><a class="btn" href="strategy.html">開啟策略回測</a><a class="btn ghost" href="strategy.html?optimization=home">開啟穩健性研究</a></div></div>`}</section>`);
     } catch (error) { errorState("樣本外驗證無法載入", error); }
   }
 
@@ -95,10 +96,10 @@
   function renderCreate() {
     const p = state.plan.protocol, def = sourceDefinition();
     const sourceName = state.sourceOpt ? `參數穩健性研究 ${state.sourceOpt.id.slice(0, 8)}…` : "策略回測結果";
-    setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="${state.sourceOpt ? `strategy.html?optimization=${encodeURIComponent(state.sourceOpt.id)}${state.strategy ? `&id=${state.strategy.id}` : ""}` : `strategy.html?id=${state.strategy.id}${state.sourceRun ? `&run=${state.sourceRun.id}` : ""}`}">← ${esc(sourceName)}</a><div class="eyebrow">策略研究 / OOS 試驗卷宗</div><h1>建立樣本外驗證</h1><p class="muted">${esc(state.strategy?.name || label(def.templateKey))} · ${state.strategy ? `v${esc(state.strategy.latest_version?.version_no)}` : "模板定義"}</p></div></header>${evidenceNotice()}
+    setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="${state.sourceOpt ? `strategy.html?optimization=${encodeURIComponent(state.sourceOpt.id)}${state.strategy ? `&id=${state.strategy.id}` : ""}` : `strategy.html?id=${state.strategy.id}${state.sourceRun ? `&run=${state.sourceRun.id}` : ""}`}">← ${esc(sourceName)}</a><h1>建立樣本外驗證</h1><p class="muted">${esc(state.strategy?.name || label(def.templateKey))} · ${state.strategy ? `v${esc(state.strategy.latest_version?.version_no)}` : "模板定義"}</p></div></header>${evidenceNotice()}
       <form id="wf-create-form" class="card optimization-form wf-create-form">
         <div class="section-head"><div><h2>研究協定</h2><p class="muted">預設沿用已驗證的 F1 協定。建立後，fold 計畫、凍結規則與執行政策會固定寫入這次試驗的來源紀錄。</p></div></div>
-        <dl class="protocol-strip"><div><dt>候選凍結規則</dt><dd>${esc(p.candidate_rule)}</dd></div><div><dt>執行政策</dt><dd>${esc(p.execution_policy)}</dd></div><div><dt>公告日期模式</dt><dd>${esc(label(def.publication))}</dd></div><div><dt>研究來源</dt><dd>${esc(sourceName)}</dd></div></dl>
+        <dl class="protocol-strip"><div><dt>候選凍結規則</dt><dd>${esc(label(p.candidate_rule))}</dd></div><div><dt>執行政策</dt><dd>${esc(label(p.execution_policy))}</dd></div><div><dt>公告日期模式</dt><dd>${esc(label(def.publication))}</dd></div><div><dt>研究來源</dt><dd>${esc(sourceName)}</dd></div></dl>
         <div class="form-grid">
           <div><label for="wf-mode">視窗模式</label><select id="wf-mode"><option value="expanding" ${p.mode === "expanding" ? "selected" : ""}>擴展（Expanding）</option><option value="rolling">滾動（Rolling）</option></select></div>
           <div><label for="wf-initial">初始訓練長度（月）</label><input id="wf-initial" type="number" min="1" step="1" value="${p.initial_train_months}" required></div>
@@ -110,11 +111,11 @@
           <div><label for="wf-end">研究結束日</label><input id="wf-end" type="date" value="${esc(state.plan.data_end)}" required></div>
         </div>
         <div class="freeze-explainer"><span class="freeze-node" aria-hidden="true"></span><div><strong>訓練 → 凍結 → 測試</strong><p>每個 fold 只凍結樣本內（IS）連續候選區域的中心點（medoid）；若沒有穩健候選，該 fold 在 OOS 期間持有現金，不以 IS 最高點補位。</p></div></div>
-        <details class="more"><summary>進階設定</summary><div class="form-grid advanced-grid">
+        <details class="more"><summary>進階設定與原始協定</summary><pre class="contract-view">${esc(JSON.stringify(p, null, 2))}</pre><div class="form-grid advanced-grid">
           <div><label for="wf-gap">間隔交易日</label><input id="wf-gap" type="number" value="${p.gap_sessions}" disabled><small>F1 OOS 協定固定為 0。</small></div>
-          <div><label for="wf-reopt">重新最佳化規則</label><input id="wf-reopt" value="${esc(p.reoptimize)}" disabled></div>
-          <div><label for="wf-execution">執行政策</label><input id="wf-execution" value="${esc(p.execution_policy)}" disabled></div>
-          <div><label for="wf-freeze">候選凍結規則</label><input id="wf-freeze" value="${esc(p.candidate_rule)}" disabled></div>
+          <div><label for="wf-reopt">重新最佳化規則</label><input id="wf-reopt" value="${esc(label(p.reoptimize))}" disabled></div>
+          <div><label for="wf-execution">執行政策</label><input id="wf-execution" value="${esc(label(p.execution_policy))}" disabled></div>
+          <div><label for="wf-freeze">候選凍結規則</label><input id="wf-freeze" value="${esc(label(p.candidate_rule))}" disabled></div>
           <div><label for="wf-objective">訓練排序目標</label><input id="wf-objective" value="${esc(def.objective)}" disabled></div>
           <div><label for="wf-publication">公告日期模式</label><select id="wf-publication"><option value="assumed" ${def.publication === "assumed" ? "selected" : ""}>假設（Assumed，期限推定）</option>${def.templateKey === "momentum_trend" ? `<option value="strict" ${def.publication === "strict" ? "selected" : ""}>嚴格（Strict，只用實際公告）</option>` : ""}</select></div>
         </div><p class="fin-note">若來源是參數穩健性研究，會沿用其已揭露的搜尋空間；本畫面不提供看完 OOS 後直接擴張搜尋範圍的動作。</p></details>
@@ -187,7 +188,7 @@
 
   function renderProgress() {
     const p = state.job.progress, complete = p.completed + p.failed;
-    setRoot(`<header class="lab-page-head compact"><div><a class="back-link" href="strategy.html?walkforward=home">← 樣本外驗證</a><div class="eyebrow">策略研究 / 樣本外（OOS）</div><h1>${esc(state.strategy?.name || label(state.job.template_key))}</h1><p class="muted">${esc(label(state.job.status))} · fold ${complete} / ${p.total}</p></div></header>${evidenceNotice()}
+    setRoot(`<header class="lab-page-head compact"><div><a class="back-link" href="strategy.html?walkforward=home">← 樣本外驗證</a><h1>${esc(state.strategy?.name || label(state.job.template_key))}</h1><p class="muted">${esc(label(state.job.status))} · fold ${complete} / ${p.total}</p></div></header>${evidenceNotice()}
       <section class="card run-progress optimization-progress"><div class="state-spinner" aria-hidden="true"></div><div><h2>${state.job.status === "queued" ? "等待建立 fold 計畫" : "執行 訓練 → 凍結 → 測試"}</h2><p class="muted">目前 fold ${p.current_fold == null ? "—" : p.current_fold + 1} · ${esc(p.current_stage ? label(p.current_stage) : "準備中")}。已完成 fold 不會重算。</p>
       <div class="progress-track determinate" role="progressbar" aria-label="樣本外驗證進度" aria-valuemin="0" aria-valuemax="${p.total}" aria-valuenow="${complete}"><div style="width:${Math.max(2, p.fraction * 100)}%"></div></div><div class="progress-actions"><button class="danger-quiet" id="wf-cancel" type="button">取消執行</button></div></div></section>`);
     $("wf-cancel").addEventListener("click", async () => { $("wf-cancel").disabled = true; await api(`/api/strategy-lab/walkforward/jobs/${state.job.id}/cancel`, { method: "POST" }); jobPage(state.job.id, state.strategy?.id); });
@@ -202,9 +203,9 @@
   function renderResult() {
     const job = state.result.job;
     const first = state.folds[0]?.windows, last = state.folds.at(-1)?.windows;
-    setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="strategy.html?walkforward=home">← 樣本外驗證</a><div class="eyebrow">獨立 fold OOS / 主要證據 · ${esc(label(job.status))}</div><h1>${esc(state.strategy?.name || label(job.template_key))}</h1><p class="muted">${esc(label(job.template_key))} · 版本 ${esc(job.provenance.strategy_version_no || "—")}</p></div><div class="head-actions"><a class="btn ghost" href="strategy.html?walkforward=new${state.strategy ? `&id=${state.strategy.id}` : ""}">建立揭露後的新試驗</a></div>
-      ${researchMetadata([["研究身分", state.strategy?.name || label(job.template_key)], ["版本", `v${job.provenance.strategy_version_no || "—"}`], ["證據型別", "獨立 fold OOS · 主要證據"], ["研究期間", `${first?.train?.[0] || "—"} — ${last?.test?.[1] || "—"}`], ["來源", `樣本外驗證 ${job.id} · ${job.provenance.candidate_rule}`], ["目前階段", "OOS 驗證"], ["下一步", "逐 fold 檢查無候選、資料品質與縫合曲線的限制"]])}</header>
-      ${researchProtocol()}${oosSummary()}${foldTimeline()}${isOosSection()}${parameterStability()}${evidenceSection()}${warningSection()}`);
+    setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="strategy.html?walkforward=home">← 樣本外驗證</a><h1>${esc(state.strategy?.name || label(job.template_key))}</h1><p class="muted">${esc(label(job.template_key))} · 版本 ${esc(job.provenance.strategy_version_no || "—")}</p></div><div class="head-actions"><a class="btn ghost" href="strategy.html?walkforward=new${state.strategy ? `&id=${state.strategy.id}` : ""}">建立揭露後的新試驗</a></div>
+<p class="research-period">獨立 fold OOS · 主要證據 · ${esc(first?.train?.[0] || "—")} — ${esc(last?.test?.[1] || "—")}</p></header>
+      ${evidenceNotice()}${oosSummary()}<details class="more research-provenance"><summary>固定研究協定與來源紀錄</summary>${researchProtocol()}<pre class="contract-view">${esc(JSON.stringify({protocol:job.protocol, provenance:job.provenance, job_id:job.id}, null, 2))}</pre></details>${foldTimeline()}${isOosSection()}${parameterStability()}${evidenceSection()}${warningSection()}`);
     if (state.foldEquity.length) StrategyCharts.independentOos("wf-independent-chart", state.foldEquity);
     bindEvidenceTabs();
   }
@@ -216,9 +217,9 @@
   function researchProtocol() {
     const j = state.result.job, p = j.protocol, folds = state.folds;
     const first = folds[0]?.windows, last = folds.at(-1)?.windows;
-    return `<section class="card optimization-section" aria-labelledby="wf-protocol-title">${sectionHead("01", "wf-protocol-title", "研究協定", "研究定義與證據層級在結果前先揭露。")}
+    return `<section class="card optimization-section" aria-labelledby="wf-protocol-title">${sectionHead("01", "wf-protocol-title", "研究協定", "完整保留這次試驗的固定研究定義。")}
       <dl class="context-grid wf-context"><div><dt>策略 / 版本</dt><dd>${esc(state.strategy?.name || label(j.template_key))} · v${esc(j.provenance.strategy_version_no || "—")}</dd></div><div><dt>研究期間</dt><dd>${esc(first?.train?.[0])} — ${esc(last?.test?.[1])}</dd></div><div><dt>Fold 數</dt><dd>${j.progress.total}</dd></div>
-      <div><dt>訓練 / 測試 / 步長</dt><dd>${esc(label(p.mode))} · ${p.initial_train_months} / ${p.test_months} / ${p.step_months} 個月</dd></div><div><dt>公告模式</dt><dd>${esc(label(j.provenance.publication_mode))}</dd></div><div><dt>凍結規則</dt><dd>${esc(j.provenance.candidate_rule)}</dd></div><div><dt>執行政策</dt><dd>${esc(j.provenance.execution_policy)}</dd></div><div><dt>主要證據</dt><dd>獨立 fold · 各自從現金開始</dd></div><div><dt>次要證據</dt><dd>縫合（stitched）OOS · 分開呈現</dd></div></dl>${evidenceNotice()}</section>`;
+      <div><dt>訓練 / 測試 / 步長</dt><dd>${esc(label(p.mode))} · ${p.initial_train_months} / ${p.test_months} / ${p.step_months} 個月</dd></div><div><dt>公告模式</dt><dd>${esc(label(j.provenance.publication_mode))}</dd></div><div><dt>凍結規則</dt><dd>${esc(label(j.provenance.candidate_rule))}</dd></div><div><dt>執行政策</dt><dd>${esc(label(j.provenance.execution_policy))}</dd></div><div><dt>主要證據</dt><dd>獨立 fold · 各自從現金開始</dd></div><div><dt>次要證據</dt><dd>縫合（stitched）OOS · 分開呈現</dd></div></dl>${evidenceNotice()}</section>`;
   }
 
   function statMedian(key) { return state.result.diagnostics?.fold_dispersion?.independent_fold_metrics?.[key]?.median; }

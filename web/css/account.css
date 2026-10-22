@@ -20,3 +20,13 @@
 .account-main [hidden], .login-desk [hidden] { display: none; }
 .account-nav { margin-left: 8px; color: var(--muted); white-space: nowrap; }
 @media (max-width: 760px) { .login-desk { display: block; padding: 28px 20px; }.login-intro h1 { font-size: 36px; margin-top: 24px; }.account-boundaries { margin: 24px 0; }.login-form-section { margin-top: 28px; padding: 24px; }.account-main { padding: 24px 16px; }.account-invite-form { grid-template-columns: 1fr; }.account-invite-form button { margin-top: 0; }.account-actions { min-width: 130px; }.account-main .desk-page-head { align-items: start; }.account-nav { font-size: 13px; } }
+
+/* Keep the administrator's members workspace first; compact personal credentials below. */
+.account-password-section { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+.account-password-section .account-password-form { margin-top: 0; width: 100%; }
+.account-password-form > label:first-child { margin-top: 0; }
+.password-control { display: flex; gap: 8px; align-items: stretch; }
+.password-control input { min-width: 0; flex: 1; }
+.password-control button, .account-password-form .password-control button { flex: 0 0 auto; width: auto; min-height: 44px; margin: 0; }
+#token-recovery { border-top: 2px solid var(--status-caution); margin-top: 24px; padding-top: 12px; }
+@media (max-width: 760px) { .account-password-section { grid-template-columns: 1fr; gap: 24px; } }

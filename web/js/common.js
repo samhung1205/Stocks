@@ -26,37 +26,138 @@ function renderNav() {
       `<div class="nav-group"><button type="button" class="nav-trigger" aria-expanded="false" aria-controls="nav-menu-${i}">${name}${NAV_CARET}</button><div class="nav-items" id="nav-menu-${i}" hidden>${links.map(([href, label]) =>
         `<a class="navlink ${current === label ? "active" : ""}" ${current === label ? 'aria-current="page"' : ""} href="${href}">${label}</a>`).join("")}${name === "市場研究" && here === "stock.html" ? `<span class="navlink active" aria-current="page">個股研究</span>` : ""}</div></div>`).join("")}</div>
     <div class="searchbox">
-      <label class="sr-only" for="global-search">搜尋股票代號或名稱</label><input id="global-search" placeholder="搜尋股票，如 2330" autocomplete="off" aria-controls="search-results">
-      <div class="search-results" id="search-results" role="listbox"></div>
+      <label class="sr-only" for="global-search">搜尋股票代號或名稱</label><input id="global-search" placeholder="搜尋股票，如 2330" autocomplete="off" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="search-results" aria-describedby="search-help">
+      <span id="search-help" class="sr-only">輸入股票代號或名稱，用上下方向鍵選取結果，Enter 開啟，Escape 關閉。也可直接輸入完整代號後按 Enter。</span>
+      <div class="search-results" id="search-panel" hidden><div id="search-results" role="listbox" aria-label="股票搜尋結果"></div><p id="search-feedback" hidden></p></div>
+      <span id="search-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
     </div>`;
   document.body.prepend(nav);
 
   const input = nav.querySelector("#global-search");
   const box = nav.querySelector("#search-results");
-  let timer;
-  input.addEventListener("input", () => {
+  const panel = nav.querySelector("#search-panel");
+  const feedback = nav.querySelector("#search-feedback");
+  const status = nav.querySelector("#search-status");
+  const searchbox = nav.querySelector(".searchbox");
+  let timer, controller, generation = 0, active = -1, options = [], resultQuery = "", composing = false;
+  function selectOption(index) {
+    active = index;
+    options.forEach((option, i) => option.setAttribute("aria-selected", String(i === index)));
+    if (index < 0) input.removeAttribute("aria-activedescendant");
+    else {
+      input.setAttribute("aria-activedescendant", options[index].id);
+      options[index].scrollIntoView({ block: "nearest" });
+    }
+  }
+  function cancelSearch() {
     clearTimeout(timer);
+    controller?.abort();
+    controller = null;
+    generation++;
+    input.setAttribute("aria-busy", "false");
+  }
+  function setSearchOpen(open) {
+    panel.hidden = !open;
+    input.setAttribute("aria-expanded", String(open));
+    if (!open) selectOption(-1);
+  }
+  function closeSearch() {
+    cancelSearch();
+    setSearchOpen(false);
+    status.textContent = "";
+  }
+  function showFeedback(message) {
+    feedback.textContent = message;
+    feedback.hidden = false;
+    box.hidden = true;
+    setSearchOpen(true);
+    status.textContent = message;
+  }
+  function search(immediate = false) {
+    cancelSearch();
+    options = []; resultQuery = "";
+    box.replaceChildren();
+    setSearchOpen(false);
+    status.textContent = "";
     const q = input.value.trim();
-    if (!q) { box.style.display = "none"; return; }
+    if (!q || composing) return;
+    const requestGeneration = generation;
     timer = setTimeout(async () => {
+      const request = controller = new AbortController();
+      input.setAttribute("aria-busy", "true");
+      showFeedback("正在搜尋股票…");
+      const current = () => requestGeneration === generation && q === input.value.trim() && document.activeElement === input;
       try {
-        const rows = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`);
-        box.innerHTML = rows.map(r =>
-          `<a role="option" href="stock.html?id=${encodeURIComponent(r.stock_id)}">
-             <span class="sid">${r.stock_id}</span><span>${r.name}</span>
-             <span class="mkt">${r.market === "twse" ? "上市" : "上櫃"}·${r.industry || ""}</span>
-           </a>`).join("") || `<div class="muted">查無結果</div>`;
-      } catch { box.innerHTML = `<div class="muted">搜尋暫時無法使用，請稍後重試。</div>`; }
-      box.style.display = "block";
-    }, 250);
+        const rows = await api(`/api/stocks/search?q=${encodeURIComponent(q)}`, { signal: request.signal });
+        if (!current()) return;
+        resultQuery = q;
+        options = rows.map((r, i) => {
+          const option = document.createElement("a");
+          option.id = `search-option-${i}`;
+          option.href = `stock.html?id=${encodeURIComponent(r.stock_id)}`;
+          option.setAttribute("role", "option");
+          option.setAttribute("aria-selected", "false");
+          option.tabIndex = -1;
+          for (const [className, text] of [["sid", r.stock_id], ["name", r.name], ["mkt", `${r.market === "twse" ? "上市" : "上櫃"}·${r.industry || ""}`]]) {
+            const span = document.createElement("span");
+            span.className = className; span.textContent = text;
+            option.append(span);
+          }
+          option.addEventListener("pointermove", () => selectOption(i));
+          // Keep the combobox's focus while a mouse click follows the native link.
+          option.addEventListener("mousedown", event => event.preventDefault());
+          return option;
+        });
+        box.replaceChildren(...options);
+        if (!options.length) { showFeedback("查無符合的股票，請確認代號或改用其他名稱。"); return; }
+        feedback.hidden = true;
+        box.hidden = false;
+        setSearchOpen(true);
+        status.textContent = `找到 ${options.length} 筆股票，用上下方向鍵選取，Enter 開啟。`;
+      } catch (error) {
+        if (current() && error.name !== "AbortError") showFeedback("搜尋暫時無法使用，請重新輸入或移回搜尋欄重試。");
+      } finally {
+        if (requestGeneration === generation) {
+          input.setAttribute("aria-busy", "false");
+          controller = null;
+        }
+      }
+    }, immediate ? 0 : 250);
+  }
+  input.addEventListener("input", () => search());
+  input.addEventListener("compositionstart", () => { composing = true; closeSearch(); });
+  input.addEventListener("compositionend", () => { composing = false; search(); });
+  input.addEventListener("focus", () => {
+    if (resultQuery && resultQuery === input.value.trim() && options.length) setSearchOpen(true);
+    else if (input.value.trim()) search();
   });
-  document.addEventListener("click", e => {
-    if (!nav.querySelector(".searchbox").contains(e.target)) box.style.display = "none";
+  document.addEventListener("pointerdown", e => {
+    if (!searchbox.contains(e.target)) closeSearch();
+  });
+  searchbox.addEventListener("focusout", e => {
+    if (!searchbox.contains(e.relatedTarget)) closeSearch();
   });
   input.addEventListener("keydown", e => {
-    if (e.key === "Escape") box.style.display = "none";
-    if (e.key === "Enter" && /^\d{4,6}$/.test(input.value.trim()))
-      location.href = `stock.html?id=${input.value.trim()}`;
+    if (composing || e.isComposing || e.keyCode === 229) return;
+    if (e.key === "Escape") { e.preventDefault(); closeSearch(); return; }
+    if (e.key === "Tab") { closeSearch(); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!input.value.trim()) return;
+      if (!options.length || resultQuery !== input.value.trim()) { search(true); return; }
+      setSearchOpen(true);
+      const next = e.key === "ArrowDown" ? (active + 1) % options.length : (active < 0 ? options.length - 1 : (active - 1 + options.length) % options.length);
+      selectOption(next);
+    }
+    if (e.key === "Enter") {
+      if (!panel.hidden && active >= 0) {
+        e.preventDefault();
+        location.href = options[active].href;
+      } else if (/^\d{4,6}$/.test(input.value.trim())) {
+        e.preventDefault();
+        location.href = `stock.html?id=${encodeURIComponent(input.value.trim())}`;
+      }
+    }
   });
   /* 導覽選單：點擊或滑鼠停留開啟；滑鼠移開、點擊外部、Esc、焦點離開皆關閉。 */
   const groups = [...nav.querySelectorAll(".nav-group")];
@@ -262,3 +363,23 @@ window.accountReady = api('/api/auth/me').then(user => {
   return user;
 });
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
+
+
+/* Private drafts stay in this page's memory; explicit saves remain server-owned. */
+function protectUnsaved(isDirty) {
+  window.addEventListener("beforeunload", event => {
+    if (!isDirty()) return;
+    event.preventDefault(); event.returnValue = "";
+  });
+  return message => !isDirty() || confirm(message || "尚有未儲存的修改。確定捨棄並離開？");
+}
+function researchValue(value) {
+  const labels = { manual: "手動輸入", scenario: "規劃情境", research_informed: "參考研究", signal_weights: "策略目標權重", score_weighted: "分數加權", score: "依分數加權", monthly: "每月", weekly: "每週", daily: "每日", cancel: "取消訂單", median: "中位數", worst: "最差排名", each_fold: "每個訓練窗重新研究", equal: "等權", exclude: "排除缺值", next_available: "下一個可成交日",
+    open: "開盤價", close: "收盤價", skip: "略過", forward_fill: "沿用前值", cash: "保留現金",
+    stock: "股票", etf: "ETF", global: "全體股票", target_weight: "目標權重",
+    partial: "部分完成", complete: "完整", every_fold: "每個訓練窗重新研究",
+    plateau_medoid: "連續候選區域中心點", cash_hold: "無候選時持有現金" };
+  if (Array.isArray(value)) return value.map(researchValue).join("、") || "—";
+  if (typeof value === "boolean") return value ? "是" : "否";
+  return labels[value] || value || (value === 0 ? 0 : "—");
+}

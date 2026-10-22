@@ -10,40 +10,64 @@
 </head>
 <body>
 <main class="dashboard-main">
-  <header class="desk-page-head"><div><p class="desk-kicker">市場研究 / 每日卷宗</p><h1>市場概況</h1><p class="muted">先確認資料日期，再看大盤與觀察名單。</p></div><div class="desk-asof">資料截至 <strong id="dashboard-asof">讀取中…</strong></div></header>
+  <header class="desk-page-head"><div><h1 id="market-heading" tabindex="-1">市場概況</h1><p class="muted">先確認資料日期，再看大盤與觀察名單。</p></div><div class="desk-asof">市場資料截至 <strong id="dashboard-asof">讀取中…</strong></div></header>
 
-  <div class="card mt" id="stale-banner" style="display:none">
-    <div class="flex">
-      <span><span id="stale-icon">⚠</span> <span id="stale-text"></span></span>
-      <span class="spacer"></span>
+  <section class="card" id="stale-banner" aria-label="資料更新狀態" hidden>
+    <div class="freshness-layout">
+      <div role="status" aria-live="polite" aria-atomic="true">
+        <strong id="stale-title"></strong>
+        <p id="stale-text" class="muted"></p>
+        <p id="stale-detail" hidden></p>
+      </div>
       <button id="btn-stale-update" class="ghost" data-admin hidden>立即更新今日行情</button>
     </div>
+    <p class="freshness-note muted">此處顯示資料庫的更新狀態；若下方內容載入失敗，請在該區重新載入。</p>
+  </section>
+
+  <div id="market-error" class="dashboard-error" hidden>
+    <div role="alert"><strong>市場概況無法載入</strong><p id="market-error-text"></p></div>
+    <button id="market-retry" class="ghost" type="button">重新載入市場概況</button>
   </div>
 
   <section class="dashboard-context" aria-label="市場資料摘要"><div class="grid cols-4" id="stat-cards">
     <div class="card"><div class="k">加權指數</div><div class="v" id="taiex">—</div><div id="taiex-chg" class="muted">—</div></div>
     <div class="card"><div class="k">成交金額</div><div class="v" id="amount">—</div><div class="muted" id="latest-date">—</div></div>
-    <div class="card"><div class="k">三大法人（金額）</div><div class="v" id="insti-amt">—</div><div class="muted" id="insti-detail">—</div></div>
+    <div class="card"><div class="k">三大法人淨買賣超</div><div class="v" id="insti-amt">—</div><div class="muted" id="insti-detail">—</div></div>
     <div class="card"><div class="k">市場寬度（漲/跌）</div><div class="v" id="breadth">—</div><div class="muted" id="breadth-total">—</div></div>
   </div></section>
 
   <div class="grid cols-2 mt">
     <div class="card">
-      <h2>加權指數走勢（近 60 個交易日）</h2>
-      <div id="taiex-chart" class="chart"></div>
+      <h2>加權指數走勢</h2>
+      <p class="dashboard-chart-period muted">近 60 個交易日 · 收盤指數（點）</p>
+      <div id="chart-state" class="dashboard-empty" role="status"><p id="chart-state-text">正在載入市場資料…</p><button id="chart-maintenance" class="ghost" type="button" hidden>前往資料維護</button></div>
+      <div id="taiex-chart" class="chart" aria-hidden="true" hidden></div>
+      <p id="chart-description" class="dashboard-chart-description" hidden></p>
+      <details id="chart-data" class="dashboard-chart-data" hidden>
+        <summary>查看歷史數值</summary>
+        <div class="scroll-x history-values" tabindex="0" role="region" aria-label="加權指數歷史數值">
+          <table class="data"><caption>目前圖表的歷史收盤資料</caption><thead><tr><th scope="col">日期</th><th scope="col">收盤指數（點）</th></tr></thead><tbody id="chart-data-rows"></tbody></table>
+        </div>
+      </details>
     </div>
     <div class="card">
-      <h2>觀察名單速覽</h2>
+      <div class="dashboard-panel-head"><h2 id="watch-heading" tabindex="-1">觀察名單速覽</h2><a href="watchlist.html">完整名單</a></div>
+      <div id="watch-error" class="dashboard-error" hidden>
+        <div role="alert"><strong>觀察名單無法載入</strong><p id="watch-error-text"></p></div>
+        <button id="watch-retry" class="ghost" type="button">重新載入觀察名單</button>
+      </div>
+      <div id="watch-empty" class="dashboard-empty" hidden><p>觀察名單尚無股票。搜尋股票後，可在個股頁加入名單。</p><button id="watch-search" class="ghost" type="button">搜尋股票</button></div>
       <div class="scroll-x">
         <table class="data" id="watch-table">
-          <thead><tr><th class="l">股票</th><th>收盤</th><th>漲跌</th><th>本益比</th><th>警訊</th><th>分級</th></tr></thead>
+          <thead><tr><th scope="col" class="l">股票</th><th scope="col">分級</th><th scope="col">警訊</th><th scope="col">收盤</th><th scope="col" class="watch-detail">漲跌</th><th scope="col" class="watch-detail">本益比</th></tr></thead>
           <tbody><tr><td colspan="6" class="muted l">載入中…</td></tr></tbody>
         </table>
       </div>
+      <p class="watch-mobile-note muted">漲跌與本益比請見「完整名單」。</p>
     </div>
   </div>
 
-  <details class="dashboard-maintenance mt" data-admin hidden><summary>資料維護與回補工作 <span id="maintenance-status" class="muted">必要時展開</span></summary><div class="card">
+  <details id="dashboard-maintenance" class="dashboard-maintenance mt" data-admin hidden><summary>資料維護與回補工作 <span id="maintenance-status" class="muted">必要時展開</span></summary><div class="card">
     <h2>資料維護</h2>
     <div class="flex">
       <button id="btn-sync" class="ghost">同步股票清單</button>
@@ -90,29 +114,27 @@ const FRESHNESS_LABEL = {
   fresh: "已同步", partial: "部分資料未完成", stale: "待更新",
   failed: "更新失敗", unknown: "無法確認（資料源異常）",
 };
-const FRESHNESS_ICON = { fresh: "✓", partial: "◐", stale: "⏳", failed: "✕", unknown: "?" };
-
 function renderFreshness(s) {
   const banner = document.getElementById("stale-banner");
   const running = s.current_status === "running";
   const state = running ? "running" : s.freshness;
-  const label = running ? "更新中…" : (FRESHNESS_LABEL[s.freshness] || s.freshness);
-  document.getElementById("stale-icon").textContent = running ? "…" : (FRESHNESS_ICON[s.freshness] || "?");
-  let detail = `資料截至 ${s.latest_completed_quote_date || "無"}｜最新交易日 ${s.expected_trading_day || "無法確認"}｜狀態：${label}`;
-  if (s.freshness === "partial" && !running) detail += "（部分資料集尚未完整，稍後會自動重試）";
-  if (s.freshness === "failed") detail += s.latest_error ? `｜最後錯誤：${s.latest_error.slice(0, 160)}` : "";
-  if (s.pending_missing_dates && s.pending_missing_dates.length) {
-    detail += `｜待補交易日：${s.pending_missing_dates.slice(0, 5).join("、")}` +
+  const label = running ? "更新中…" : (FRESHNESS_LABEL[s.freshness] || "無法確認");
+  banner.dataset.state = state;
+  document.getElementById("stale-title").textContent = `資料更新狀態：${label}`;
+  document.getElementById("stale-text").textContent =
+    `資料庫行情截至 ${s.latest_completed_quote_date || "尚無資料"} · 最新交易日 ${s.expected_trading_day || "無法確認"}`;
+  const details = [];
+  if (s.freshness === "partial") details.push("部分資料集尚未完整。" + (running ? "正在補齊，完成前請留意缺漏。" : "稍後會自動重試，完成前請留意缺漏。"));
+  if (s.freshness === "failed" && s.latest_error) details.push(`最後錯誤：${s.latest_error.slice(0, 160)}`);
+  if (s.pending_missing_dates?.length) {
+    details.push(`待補交易日：${s.pending_missing_dates.slice(0, 5).join("、")}` +
       (s.pending_missing_dates.length > 5 ? ` 等 ${s.pending_missing_dates.length} 天` : "") +
-      (s.pending_missing_dates_source === "weekday_estimate" ? "（未執行過 Strategy Lab 交易日曆回補，以平日粗估，可能含國定假日）" : "");
+      (s.pending_missing_dates_source === "weekday_estimate" ? "（尚無研究用交易日曆，依平日粗估，可能含國定假日）" : ""));
   }
-  document.getElementById("stale-text").textContent = detail;
-  const colors = { fresh: "var(--success)", partial: "var(--warn)", stale: "var(--warn)",
-    failed: "var(--danger)", unknown: "var(--warn)", running: "var(--accent)" };
-  banner.style.borderTopColor = colors[state] || "var(--warn)";
-  banner.style.borderTopWidth = "2px";
-  // fresh 且非 running 時仍保留 banner（顯示「已同步」），不隱藏——stale/partial/failed 不會被 auto-refresh 蓋掉。
-  banner.style.display = "";
+  const detail = document.getElementById("stale-detail");
+  detail.textContent = details.join(" ");
+  detail.hidden = !details.length;
+  banner.hidden = false;
   const btn = document.getElementById("btn-stale-update");
   btn.disabled = running;
   btn.textContent = running ? "更新中…" : "立即更新今日行情";
@@ -125,8 +147,13 @@ async function loadFreshness() {
     renderFreshness(s);
     return s;
   } catch (err) {
-    document.getElementById("stale-text").textContent = "無法讀取資料狀態：" + err.message;
-    document.getElementById("stale-banner").style.display = "";
+    const banner = document.getElementById("stale-banner");
+    banner.dataset.state = "unknown";
+    document.getElementById("stale-title").textContent = "資料更新狀態：無法讀取";
+    document.getElementById("stale-text").textContent = "暫時無法確認資料是否完整，稍後會自動重試。";
+    document.getElementById("stale-detail").textContent = err.message;
+    document.getElementById("stale-detail").hidden = false;
+    banner.hidden = false;
     return null;
   }
 }
@@ -145,19 +172,26 @@ document.getElementById("btn-stale-update").addEventListener("click", async e =>
 // 更新中或資料落後時較常輪詢，已同步時降頻——不用使用者緊盯畫面。
 setInterval(() => { if (!document.hidden) loadFreshness(); }, 20000);
 
-async function loadDashboard() {
-  const d = await api("/api/market/dashboard");
+let dashboardLoading = false, watchlistLoading = false;
+let dashboardLoaded = false, watchlistLoaded = false, dashboardChart;
+
+async function renderDashboard(d) {
   const L = d.latest;
+  // A successful empty/partial response must not retain values from a previous load.
+  for (const id of ["taiex", "taiex-chg", "amount", "latest-date", "insti-amt", "insti-detail", "breadth", "breadth-total"])
+    document.getElementById(id).textContent = "—";
+  document.getElementById("taiex-chg").className = "muted";
+  document.getElementById("insti-amt").className = "v";
+  document.getElementById("dashboard-asof").textContent = L ? `${L.date} 收盤` : "尚無市場資料";
   if (L) {
-    document.getElementById("dashboard-asof").textContent = `${L.date} 收盤`;
     document.getElementById("taiex").textContent = fmt.num(L.taiex_close, 2);
     const chg = document.getElementById("taiex-chg");
     chg.textContent = `${fmt.sign(L.taiex_change)} (${fmt.signPct(L.taiex_change_pct)})`;
     chg.className = fmt.cls(L.taiex_change);
-    document.getElementById("amount").textContent = L.total_amount ? fmt.yi(L.total_amount) : "—";
+    document.getElementById("amount").textContent = fmt.yi(L.total_amount);
     document.getElementById("latest-date").textContent = L.date;
     const f = L.foreign_net_amt, t = L.trust_net_amt, dl = L.dealer_net_amt;
-    if (f != null || t != null) {
+    if (f != null || t != null || dl != null) {
       const total = (f || 0) + (t || 0) + (dl || 0);
       const el = document.getElementById("insti-amt");
       el.textContent = fmt.yi(total);
@@ -166,45 +200,126 @@ async function loadDashboard() {
         `外資 ${fmt.yi(f)}｜投信 ${fmt.yi(t)}｜自營 ${fmt.yi(dl)}`;
     }
   }
-  else document.getElementById("dashboard-asof").textContent = "尚無市場資料";
   if (d.breadth && d.breadth.total) {
     document.getElementById("breadth").innerHTML =
-      `<span class="up">${d.breadth.up}</span> / <span class="down">${d.breadth.down}</span>`;
-    document.getElementById("breadth-total").textContent = `共 ${d.breadth.total} 檔有報價`;
+      `<span class="up">${fmt.int(d.breadth.up)}</span> / <span class="down">${fmt.int(d.breadth.down)}</span>`;
+    document.getElementById("breadth-total").textContent = `共 ${fmt.int(d.breadth.total)} 檔有報價`;
   }
-  if (d.history && d.history.length > 1) {
-    const chart = makeChart("taiex-chart");
-    chart.setOption(baseOption({
-      xAxis: { type: "category", data: d.history.map(r => r.date), ...axisStyle() },
+  const history = d.history || [];
+  const points = history.filter(r => r.taiex_close != null && Number.isFinite(Number(r.taiex_close)));
+  const chart = document.getElementById("taiex-chart");
+  const state = document.getElementById("chart-state");
+  const description = document.getElementById("chart-description");
+  chart.hidden = points.length < 2;
+  state.hidden = points.length >= 2;
+  description.hidden = !points.length;
+  document.getElementById("chart-data").hidden = !history.length;
+  document.getElementById("chart-maintenance").hidden = true;
+  document.getElementById("chart-data-rows").innerHTML = history.map(r =>
+    `<tr><th scope="row">${escapeHtml(r.date)}</th><td>${fmt.num(r.taiex_close, 2)}</td></tr>`).join("");
+  if (points.length) {
+    const first = points[0], last = points[points.length - 1];
+    description.textContent = points.length === 1
+      ? `${first.date} 收盤 ${fmt.num(first.taiex_close, 2)} 點，目前僅有 1 筆有效收盤資料。`
+      : `${first.date} 至 ${last.date}，共 ${points.length} 筆有效收盤資料。由 ${fmt.num(first.taiex_close, 2)} 點至 ${fmt.num(last.taiex_close, 2)} 點，區間變動 ${fmt.sign(last.taiex_close - first.taiex_close)} 點。`;
+    if (points.length !== history.length) description.textContent += ` 另有 ${history.length - points.length} 筆缺少有效指數，詳見歷史數值。`;
+  }
+  if (points.length >= 2) {
+    dashboardChart ||= makeChart("taiex-chart");
+    dashboardChart.setOption(baseOption({
+      xAxis: { type: "category", data: history.map(r => r.date), ...axisStyle() },
       yAxis: { type: "value", scale: true, ...axisStyle() },
-      series: [{ type: "line", data: d.history.map(r => r.taiex_close),
+      series: [{ type: "line", data: history.map(r => r.taiex_close),
                  showSymbol: false, lineStyle: { color: CHART_THEME.ACCENT, width: 2 },
                  areaStyle: { color: CHART_THEME.ACCENT, opacity: .12 } }],
-    }));
+    }), true);
+    dashboardChart.resize();
   } else {
-    document.getElementById("taiex-chart").innerHTML =
-      '<p class="muted">尚無歷史資料 — 請先執行下方「回填 180 天歷史」。</p>';
+    const user = await window.accountReady;
+    const admin = user.role === "admin";
+    document.getElementById("chart-state-text").textContent =
+      (points.length ? "歷史資料不足，尚無法顯示走勢。" : "尚無可顯示的歷史收盤資料。") +
+      (admin ? "請到資料維護確認資料並回填歷史。" : "共享市場資料需由管理員準備，請聯絡邀請你的管理員；你仍可搜尋股票或查看觀察名單。");
+    document.getElementById("chart-maintenance").hidden = !admin;
+  }
+}
+
+async function loadDashboard() {
+  if (dashboardLoading) return;
+  dashboardLoading = true;
+  const retry = document.getElementById("market-retry");
+  const returnFocus = document.activeElement === retry;
+  retry.disabled = true;
+  retry.textContent = "正在重新載入…";
+  try {
+    const d = await api("/api/market/dashboard");
+    await renderDashboard(d);
+    dashboardLoaded = true;
+    document.getElementById("market-error").hidden = true;
+    document.querySelector(".dashboard-context").hidden = false;
+    if (returnFocus) document.getElementById("market-heading").focus();
+  } catch (err) {
+    document.getElementById("market-error-text").textContent =
+      `${err.message}。${dashboardLoaded ? "下方保留上次載入成功的資料，尚未確認是否有更新。" : "請重新載入；這不代表資料庫沒有行情。"}`;
+    document.getElementById("market-error").hidden = false;
+    if (!dashboardLoaded) {
+      document.getElementById("dashboard-asof").textContent = "無法讀取";
+      document.querySelector(".dashboard-context").hidden = true;
+      document.getElementById("chart-state-text").textContent = "市場資料尚未載入，請使用上方「重新載入市場概況」。";
+    }
+  } finally {
+    dashboardLoading = false;
+    retry.disabled = false;
+    retry.textContent = "重新載入市場概況";
   }
 }
 
 async function loadWatchlist() {
-  const rows = await api("/api/watchlist");
-  const tierLabel = { research: "研究中", waiting: "等買點", holding: "持有中" };
-  const tbody = document.querySelector("#watch-table tbody");
-  if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="muted l">觀察名單是空的 — 用右上角搜尋加入個股。</td></tr>';
-    return;
+  if (watchlistLoading) return;
+  watchlistLoading = true;
+  const retry = document.getElementById("watch-retry");
+  const returnFocus = document.activeElement === retry;
+  retry.disabled = true;
+  retry.textContent = "正在重新載入…";
+  try {
+    const rows = await api("/api/watchlist");
+    const tierLabel = { research: "研究中", waiting: "等買點", holding: "持有中" };
+    document.querySelector("#watch-table tbody").innerHTML = rows.map(r => `
+      <tr>
+        <td class="l"><a href="stock.html?id=${encodeURIComponent(r.stock_id)}"><span class="watch-stock-id">${escapeHtml(r.stock_id)}</span><span class="watch-stock-name">${escapeHtml(r.name)}</span></a></td>
+        <td><span class="badge tier">${escapeHtml(tierLabel[r.tier] || r.tier)}</span></td>
+        <td>${r.alerts.length ? `<a class="badge warn" href="stock.html?id=${encodeURIComponent(r.stock_id)}#stock-risk" aria-label="查看 ${escapeHtml(r.name)} 的 ${r.alerts.length} 項警訊">${r.alerts.length} 項</a>` : '<span class="muted">—</span>'}</td>
+        <td>${fmt.num(r.close)}</td>
+        <td class="watch-detail ${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
+        <td class="watch-detail">${fmt.num(r.pe, 1)}</td>
+      </tr>`).join("");
+    document.getElementById("watch-table").hidden = !rows.length;
+    document.getElementById("watch-empty").hidden = !!rows.length;
+    document.getElementById("watch-error").hidden = true;
+    watchlistLoaded = true;
+    if (returnFocus) document.getElementById("watch-heading").focus();
+  } catch (err) {
+    document.getElementById("watch-error-text").textContent =
+      `${err.message}。${watchlistLoaded ? "下方保留上次載入成功的名單。" : "請重新載入；這不代表名單沒有股票。"}`;
+    document.getElementById("watch-error").hidden = false;
+    if (!watchlistLoaded) document.getElementById("watch-table").hidden = true;
+  } finally {
+    watchlistLoading = false;
+    retry.disabled = false;
+    retry.textContent = "重新載入觀察名單";
   }
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td class="l"><a href="stock.html?id=${r.stock_id}">${r.stock_id} ${r.name}</a></td>
-      <td>${fmt.num(r.close)}</td>
-      <td class="${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
-      <td>${fmt.num(r.pe, 1)}</td>
-      <td>${r.alerts.length ? `<span class="badge warn">${r.alerts.length} 項</span>` : '<span class="muted">—</span>'}</td>
-      <td><span class="badge tier">${tierLabel[r.tier] || r.tier}</span></td>
-    </tr>`).join("");
 }
+
+document.getElementById("market-retry").addEventListener("click", loadDashboard);
+document.getElementById("watch-retry").addEventListener("click", loadWatchlist);
+document.getElementById("watch-search").addEventListener("click", () => document.getElementById("global-search").focus());
+document.getElementById("chart-maintenance").addEventListener("click", () => {
+  const maintenance = document.getElementById("dashboard-maintenance");
+  if (maintenance.hidden) return;
+  maintenance.open = true;
+  maintenance.querySelector("summary").focus();
+  maintenance.scrollIntoView({ block: "start" });
+});
 
 async function loadStatus() {
   if ((await window.accountReady).role !== 'admin') return;
@@ -232,15 +347,7 @@ bindAdmin("btn-backfill", "/api/admin/backfill", { days: 180 }, () => "歷史回
 bindAdmin("btn-revenue", "/api/admin/fetch-revenue", { months: 13 },
   r => `近 ${r.months ?? 13} 個月營收已在背景抓取`);
 
-loadDashboard().catch(err => {
-  document.getElementById("dashboard-asof").textContent = "無法讀取";
-  toastError("市場概況無法載入：" + err.message);
-});
-loadWatchlist().catch(err => {
-  document.querySelector("#watch-table tbody").innerHTML =
-    `<tr><td colspan="6" class="l" role="alert">觀察名單無法載入：${escapeHtml(err.message)}</td></tr>`;
-});
-loadStatus(); loadFreshness();
+loadDashboard(); loadWatchlist(); loadStatus(); loadFreshness();
 </script>
 </body>
 </html>

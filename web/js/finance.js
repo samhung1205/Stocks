@@ -11,6 +11,25 @@ let sourceEvidence = null;
 let relinkKey = null;
 const charts = {};
 const MAX_STEP = 7;
+let editRevision = 0, savedRevision = 0, profileEpoch = 0, simulationEpoch = 0;
+let profileBusy = false, plannerSaving = false;
+const sourcePending = () => ["manual-name", "manual-return", "add-etf", "source-return"].some(id => document.getElementById(id)?.value.trim()) || relinkKey != null;
+const mayLeavePlanner = protectUnsaved(() => P && (editRevision !== savedRevision || sourcePending()));
+function plannerStatus() {
+  $("save-hint").textContent = plannerSaving ? "正在儲存；後續修改仍會保留" :
+    (editRevision !== savedRevision || sourcePending()) ? "有未儲存修改 · 試算不會自動儲存" : P?.id ? "已儲存 · 可繼續調整並試算" : "新情境尚未儲存";
+}
+function resetSourceDraft() {
+  ["manual-name", "manual-return", "add-etf", "source-return"].forEach(id => $(id).value = "");
+  relinkKey = null; $("source-cancel").hidden = true;
+  $("planner-form-error").hidden = true;
+}
+function profileControls(busy) {
+  profileBusy = busy;
+  document.querySelector(".fin-input").inert = busy && !plannerSaving;
+  ["profile-sel", "btn-new", "btn-del", "btn-save"].forEach(id => $(id).disabled = busy);
+}
+
 
 /* 角色與曝險配色：刻意不用紅綠——財務規劃沒有「漲跌」的語意 */
 const RESEARCH_COLOR = {
@@ -106,17 +125,20 @@ function goStep(n) {
     { const active = Number(b.dataset.go) === step; b.classList.toggle("active", active); b.setAttribute("aria-current", active ? "step" : "false"); });
   $("btn-prev").disabled = step === 1;
   $("btn-next").disabled = step === MAX_STEP;
+  const resultMap = [[0,4],[0,1],[1,3],[2,7],[2,3,7,9],[4,5,6],[8]];
+  const names = ["財務安全","每月投資能力","建議配置","投入金額","複利模擬","本金與收益","報酬情境","風險分析","退休試算","再平衡"];
+  $("step-results").innerHTML = `對應試算：${resultMap[step-1].map(i => `<a href="#finance-result-${i}">${names[i]}</a>`).join(" · ")}`;
 }
 
 function renderQuestions() {
   $("risk-questions").innerHTML = U.questions.map(q => `
-    <div class="fin-q">
-      <div class="qt">${esc(q.text)}</div>
+    <fieldset class="fin-q">
+      <legend class="qt">${esc(q.text)}</legend>
       <div class="fin-opts">${q.options.map(o => `
         <label><input type="radio" name="q-${q.key}" value="${o.value}"
           ${P.risk_answers?.[q.key] === o.value ? "checked" : ""}>${esc(o.label)}</label>`).join("")}
       </div>
-    </div>`).join("");
+    </fieldset>`).join("");
   $("risk-questions").querySelectorAll("input").forEach(el =>
     el.addEventListener("change", recalc));
 }
@@ -180,7 +202,7 @@ function renderEvidence(ev, where) {
   if (!ev) { where.innerHTML = '<p class="fin-hint">選擇固定版本後可檢視研究證據。</p>'; return; }
   const archive = ev.archived ? '<p class="fin-archive">來源已封存；固定版本與既有研究仍可讀取。</p>' : "";
   if (!research?.available) {
-    where.innerHTML = `<h3>研究證據</h3>${archive}<p class="fin-hint">未選擇已完成的研究紀錄；目前沒有研究數值可顯示。這是正常狀態。</p><p class="fin-hint">Historical / OOS ≠ forecast；歷史與樣本外證據不是未來報酬預測。</p>`;
+    where.innerHTML = `<h3>研究證據</h3>${archive}<p class="fin-hint">未選擇已完成的研究紀錄；目前沒有研究數值可顯示。這是正常狀態。</p><p class="fin-hint">歷史與樣本外（OOS）證據不是未來報酬預測。</p>`;
     return;
   }
   const m = research.metrics || {}, cash = research.cash || {}, turn = research.turnover || {};
@@ -196,10 +218,10 @@ function renderEvidence(ev, where) {
     const key = x.code || x.level || "限制"; out[key] = (out[key] || 0) + 1; return out;
   }, {})).map(([code, count]) => `${esc(code)} × ${count}`).join(" · ");
   where.innerHTML = `<h3>研究證據</h3>${archive}
-    <p class="fin-evidence-label">Historical / OOS ≠ forecast；歷史與樣本外證據不是未來報酬預測。</p>
-    <p class="fin-hint">研究期間 ${esc(w.start || "—")} ～ ${esc(w.end || "—")} · Run ${esc(ev.research_run_id)}</p>
-    <dl class="fin-evidence-metrics">${metric("CAGR", m.cagr, true)}${metric("Sharpe", m.sharpe == null ? null : Number(m.sharpe).toFixed(2))}${metric("Max Drawdown", m.max_drawdown, true)}${metric("Total Return", m.total_return, true)}${metric("Annualized volatility", m.annualized_volatility, true)}${metric("平均內部現金", cash.avg_cash_weight, true, true)}${metric("期末內部現金", cash.last_cash_weight, true, true)}${metric("Turnover", turn.turnover ?? m.turnover, true)}${metric("Cost drag", turn.cost_drag_pct, true)}</dl>
-    <p class="fin-hint">組合內部現金是研究證據，不計入 Planner 個人現金。</p>
+    <p class="fin-evidence-label">歷史與樣本外（OOS）證據不是未來報酬預測。</p>
+    <p class="fin-hint">研究期間 ${esc(w.start || "—")} ～ ${esc(w.end || "—")} · 研究 ${esc(ev.research_run_id)}</p>
+    <dl class="fin-evidence-metrics">${metric("CAGR", m.cagr, true)}${metric("Sharpe", m.sharpe == null ? null : Number(m.sharpe).toFixed(2))}${metric("最大回撤", m.max_drawdown, true)}${metric("總報酬", m.total_return, true)}${metric("年化波動率", m.annualized_volatility, true)}${metric("平均內部現金", cash.avg_cash_weight, true, true)}${metric("期末內部現金", cash.last_cash_weight, true, true)}${metric("週轉率", turn.turnover ?? m.turnover, true)}${metric("成本拖累", turn.cost_drag_pct, true)}</dl>
+    <p class="fin-hint">組合內部現金是研究證據，不計入個人規劃現金。</p>
     ${warnings ? `<div class="fin-evidence-warnings"><strong>警示與限制 · ${warningRows.length}</strong><p class="fin-hint">${warningCounts}</p><details><summary>展開原始限制明細</summary><ul class="fin-hint">${warnings}</ul></details></div>` : ""}`;
 }
 
@@ -210,16 +232,16 @@ function renderOtherSources() {
     const fieldId = `source-${String(t.stock_id).replace(/[^A-Za-z0-9_-]/g, "-")}`;
     return `<div class="fin-etf fin-source-row ${t.enabled ? "" : "off"}" data-sid="${id}">
       <div class="top"><input class="en" type="checkbox" aria-label="${id} 啟用" ${t.enabled ? "checked" : ""}>
-        <strong>${portfolio ? "Strategy Portfolio" : "Manual / 自訂"}</strong><span class="source-name">${portfolio ? esc(portfolioCatalog.find(p => p.id === t.strategy_portfolio_id)?.name || t.stock_id) : id}</span></div>
-      ${portfolio ? `<p class="fin-hint">Pinned <span class="version-label">version ID ${esc(t.portfolio_version_id)}</span> · ${t.research_run_id ? `Run ${esc(t.research_run_id)}` : "未選 Research Run"} · assumption source: ${esc(t.assumption_source || "未設定")}</p>
-        <p class="fin-newer" hidden>Newer version available · 目前仍固定在舊版本。</p>
-        <button type="button" class="ghost small relink" data-key="${id}">Relink / Update Source</button>
+        <strong>${portfolio ? "策略投資組合" : "自訂來源"}</strong><span class="source-name">${portfolio ? esc(portfolioCatalog.find(p => p.id === t.strategy_portfolio_id)?.name || t.stock_id) : id}</span></div>
+      ${portfolio ? `<p class="fin-hint">已固定 <span class="version-label">版本編號 ${esc(t.portfolio_version_id)}</span> · ${t.research_run_id ? `研究 ${esc(t.research_run_id)}` : "未選研究紀錄"} · 假設來源： ${esc(researchValue(t.assumption_source || "未設定"))}</p>
+        <details class="more"><summary>固定來源原始欄位</summary><pre class="contract-view">${esc(JSON.stringify({source_type:t.source_type,portfolio_version_id:t.portfolio_version_id,research_run_id:t.research_run_id,assumption_source:t.assumption_source},null,2))}</pre></details><p class="fin-newer" hidden>已有新版本 · 目前仍固定在舊版本。</p>
+        <button type="button" class="ghost small relink" data-key="${id}">更新固定來源</button>
         <div class="fin-evidence row-evidence"><p class="fin-hint">正在載入研究證據…</p></div>
-        <p class="fin-hint">Equity / TW 是 Planner 的 reporting approximation，不代表研究組合的實際持倉或限制。</p>` : `<p class="fin-hint">自訂／未分類；不套用 ETF role 或台股核心資產分類。</p>`}
+        <p class="fin-hint">股票／台灣是財務規劃的報告分類近似，不代表研究組合的實際持倉或限制。</p>` : `<p class="fin-hint">自訂／未分類；不套用 ETF 角色 或台股核心資產分類。</p>`}
       <div class="fields"><div><label for="${fieldId}-weight">目標權重 %</label><input id="${fieldId}-weight" class="w" type="number" step="0.1" aria-label="${id} 目標權重 %" value="${t.weight ?? ""}"></div>
-        <div><label for="${fieldId}-return">Planning return %</label><input id="${fieldId}-return" class="er" type="number" step="0.1" aria-label="${id} Planning return %" value="${t.expected_return ?? ""}" ${portfolio ? "readonly title=\"請透過 Relink 確認假設\"" : ""}></div>
+        <div><label for="${fieldId}-return">規劃年報酬 %</label><input id="${fieldId}-return" class="er" type="number" step="0.1" aria-label="${id} 規劃年報酬 %" value="${t.expected_return ?? ""}" ${portfolio ? "readonly title=\"請透過「更新固定來源」確認假設\"" : ""}></div>
         <div><label for="${fieldId}-value">目前市值（手動）</label><input id="${fieldId}-value" class="av" type="number" aria-label="${id} 目前市值（手動）" value="${t.actual_value ?? ""}" placeholder="可留空"></div></div>
-      ${portfolio ? '<p class="fin-hint">若 Step 2 已含這筆市值，請避免重複輸入。</p>' : ""}
+      ${portfolio ? '<p class="fin-hint">若 步驟 2 已含這筆市值，請避免重複輸入。</p>' : ""}
       <button type="button" class="ghost small remove-source" data-key="${id}">移除來源</button></div>`;
   }).join("");
   $("other-source-list").querySelectorAll("input").forEach(el => { el.addEventListener("input", recalc); el.addEventListener("change", recalc); });
@@ -260,7 +282,7 @@ function renderPortfolioOptions(term = "") {
   const currentRow = portfolioCatalog.find(p => String(p.id) === current);
   const visible = matches.slice(0, 80);
   if (currentRow && !visible.some(p => p.id === currentRow.id)) visible.unshift(currentRow);
-  select.innerHTML = '<option value="">選擇 Portfolio</option>' + visible.map(p =>
+  select.innerHTML = '<option value="">選擇投資組合</option>' + visible.map(p =>
     `<option value="${p.id}">${esc(p.name)} · #${p.id}${p.archived ? "（已封存）" : ""}</option>`).join("");
   if (current) select.value = current;
   $("source-portfolio-range").textContent = matches.length > visible.length
@@ -290,7 +312,7 @@ async function sourceVersionChanged(preferredRun = null) {
   const id = Number($("source-portfolio").value), version = Number($("source-version").value);
   $("source-run").innerHTML = '<option value="">不選 Research Run</option>';
   sourceEvidence = null; renderEvidence(null, $("source-evidence"));
-  $("source-pin").textContent = version ? `Pinned version ID ${version}；儲存後不會自動切換。` : "請明確選擇版本。";
+  $("source-pin").textContent = version ? `已固定 版本編號 ${version}；儲存後不會自動切換。` : "請明確選擇版本。";
   if (!id || !version) return;
   try {
     const runs = await api(`/api/strategy-lab/portfolios/${id}/research-runs?limit=200`);
@@ -319,7 +341,7 @@ function updateReferenceButton() {
   $("source-use-reference").hidden = !informed || cagr == null;
   $("source-assumption-note").textContent = informed
     ? "請先閱讀上方 evidence，再自行輸入假設，或主動按 Use as reference。確認來源後仍需按頁面頂端的儲存。"
-    : "規劃假設由你決定；選擇 Portfolio 或 Run 不會變更此數字。";
+    : "規劃假設由你決定；選擇投資組合 或 Run 不會變更此數字。";
 }
 async function beginRelink(key) {
   readForm();
@@ -327,7 +349,7 @@ async function beginRelink(key) {
   if (!target) return;
   relinkKey = key;
   $("investment-source").value = "strategy_portfolio"; sourceMode();
-  $("source-form-title").textContent = "Relink / Update Source：重新選擇版本、研究與規劃假設。原假設不會沿用。";
+  $("source-form-title").textContent = "更新固定來源：重新選擇版本、研究與規劃假設。原假設不會沿用。";
   $("source-cancel").hidden = false;
   $("source-portfolio").value = target.strategy_portfolio_id;
   $("source-return").value = ""; $("source-assumption").value = "manual";
@@ -341,12 +363,12 @@ function confirmPortfolioSource() {
   const id = Number($("source-portfolio").value), version = Number($("source-version").value);
   const run = $("source-run").value || null, assumption = $("source-assumption").value;
   const raw = $("source-return").value.trim();
-  if (!id || !version) return sourceError("請選擇 Portfolio 與固定版本。 ");
+  if (!id || !version) return sourceError("請選擇投資組合 與固定版本。 ");
   if (assumption === "research_informed" && (!run || !sourceEvidence?.research?.available || raw === ""))
-    return sourceError("Research-informed 需要已完成的研究證據與明確填寫的 planning return。");
+    return sourceError("參考研究需要已完成的研究證據與明確填寫的 規劃年報酬。");
   const key = `portfolio:${id}`;
-  if (!relinkKey && P.targets.some(t => t.stock_id === key)) return sourceError("此 Portfolio 已在清單中；請使用 Relink / Update Source。");
-  if (relinkKey && relinkKey !== key && P.targets.some(t => t.stock_id === key)) return sourceError("目標 Portfolio 已在清單中，無法建立重複來源。");
+  if (!relinkKey && P.targets.some(t => t.stock_id === key)) return sourceError("此投資組合 已在清單中；請使用 更新固定來源。");
+  if (relinkKey && relinkKey !== key && P.targets.some(t => t.stock_id === key)) return sourceError("目標投資組合 已在清單中，無法建立重複來源。");
   const old = P.targets.find(t => t.stock_id === relinkKey);
   const next = {stock_id: key, source_type: "strategy_portfolio", strategy_portfolio_id: id,
     portfolio_version_id: version, research_run_id: run, assumption_source: raw === "" ? null : assumption,
@@ -357,7 +379,7 @@ function confirmPortfolioSource() {
   $("source-return").value = ""; $("source-cancel").hidden = true; clearSourceError();
   $("investment-source").value = "etf"; sourceMode();
   renderOtherSources(); recalc();
-  $("save-hint").textContent = "來源已更新；請按儲存確認 Planner 情境";
+  $("save-hint").textContent = "來源已更新；請按儲存確認規劃情境";
 }
 
 /* ── 結果骨架（只建一次，之後只更新內容，圖表實例才能保留） ── */
@@ -450,6 +472,15 @@ function renderSkeleton() {
           <tbody></tbody></table></div>
       </details>
     </div>`;
+  const inputSteps = [2,3,5,5,6,6,6,4,7,5];
+  $("result").querySelectorAll(".fin-section").forEach((section,i) => {
+    if (i >= inputSteps.length) return;
+    section.id = `finance-result-${i}`; section.tabIndex = -1;
+    const link = document.createElement("button"); link.type = "button"; link.className = "ghost small";
+    link.textContent = `調整相關輸入（步驟 ${inputSteps[i]}）`;
+    link.onclick = () => { goStep(inputSteps[i]); document.querySelector(`.fin-step[data-step="${inputSteps[i]}"] input`)?.focus(); };
+    section.append(link);
+  });
 }
 
 /* ── 結果更新 ────────────────────────────────────────── */
@@ -529,8 +560,8 @@ function updateResult(r) {
   $("weight-sum").innerHTML = `權重合計 <b class="${sumOk ? "" : "warn"}">${A.weight_sum}%</b>`;
   const fallback = !!P.assumptions.use_portfolio_return && A.expected_return == null;
   $("base-assumption-status").textContent = fallback
-    ? `Currently using Planner Base Assumption: ${P.assumptions.return_base}%. This is not the Strategy Portfolio historical return.／目前使用 Planner 基準假設，並非組合研究的歷史報酬。`
-    : P.assumptions.use_portfolio_return ? `目前使用已設定標的的加權規劃假設：${A.expected_return}%。` : `目前使用你在此填寫的 Planner 三種情境假設。`;
+    ? `目前使用規劃基準假設 ${P.assumptions.return_base}%；並非投資組合研究的歷史報酬。`
+    : P.assumptions.use_portfolio_return ? `目前使用已設定標的的加權規劃假設：${A.expected_return}%。` : `目前使用你在此填寫的規劃三種情境假設。`;
 
   const pr = r.projection, as = r.assumptions;
   $("summary-kv").innerHTML =
@@ -749,12 +780,17 @@ function drawCharts(r) {
 
 /* ── 試算（debounce，spec §31 要求所有結果即時更新） ──── */
 let timer;
-function recalc() {
+function recalc(changed = true) {
+  if (!P) return;
+  if (changed) { editRevision++; plannerStatus(); }
+  const epoch = profileEpoch, generation = ++simulationEpoch;
   clearTimeout(timer);
   timer = setTimeout(async () => {
     readForm();
     try {
-      R = await api("/api/finance/simulate", { method: "POST", body: P });
+      const result = await api("/api/finance/simulate", { method: "POST", body: P });
+      if (epoch !== profileEpoch || generation !== simulationEpoch) return;
+      R = result;
       updateResult(R);
       syncWeightInputs();
     } catch (err) { toastError("試算失敗：" + err.message); }
@@ -782,13 +818,20 @@ async function loadProfileList(selectId) {
 }
 
 async function openProfile(id) {
-  P = id ? await api(`/api/finance/profiles/${id}`)
-         : await api("/api/finance/profiles/new");
-  fillForm();
-  relinkKey = null;
-  $("source-return").value = "";
-  $("source-cancel").hidden = true;
-  recalc();
+  profileControls(true);
+  const epoch = ++profileEpoch;
+  clearTimeout(timer); simulationEpoch++;
+  try {
+    const next = id ? await api(`/api/finance/profiles/${id}`) : await api("/api/finance/profiles/new");
+    if (epoch !== profileEpoch) return;
+    P = next; fillForm();
+    resetSourceDraft();
+    editRevision = savedRevision = 0;
+    plannerStatus(); recalc(false);
+  } catch (err) {
+    $("profile-sel").value = P?.id || "";
+    toastError("情境未切換：" + err.message);
+  } finally { if (epoch === profileEpoch) profileControls(false); }
 }
 
 async function boot() {
@@ -818,10 +861,14 @@ $("btn-prev").addEventListener("click", () => goStep(step - 1));
 $("btn-next").addEventListener("click", () => goStep(step + 1));
 
 $("profile-sel").addEventListener("change", e => {
+  if (profileBusy || !mayLeavePlanner("目前情境有未儲存修改。確定捨棄並切換情境？")) {
+    e.target.value = P?.id || ""; return;
+  }
   if (e.target.value) openProfile(Number(e.target.value));
 });
 
 $("btn-new").addEventListener("click", () => {
+  if (profileBusy) return;
   $("new-profile-name").value = "情境 " + (new Date()).toLocaleDateString("zh-TW");
   $("new-profile-error").hidden = true;
   $("new-profile-dialog").showModal();
@@ -832,40 +879,57 @@ $("new-profile-form").addEventListener("submit", async e => {
   e.preventDefault();
   const name = $("new-profile-name").value.trim();
   if (!name) { $("new-profile-error").textContent = "請輸入情境名稱。"; $("new-profile-error").hidden = false; return; }
-  readForm();
+  if (profileBusy || !mayLeavePlanner("目前情境有未儲存修改。確定捨棄並新增情境？")) return;
+  profileControls(true);
   try {
-    P = await api("/api/finance/profiles/new?name=" + encodeURIComponent(name));
-    fillForm(); recalc();
+    const next = await api("/api/finance/profiles/new?name=" + encodeURIComponent(name));
+    profileEpoch++; simulationEpoch++; clearTimeout(timer);
+    P = next; editRevision = 1; savedRevision = 0;
+    fillForm(); resetSourceDraft(); goStep(1); recalc(false); plannerStatus();
     $("new-profile-dialog").close();
     $("save-hint").textContent = "尚未儲存，按「儲存」建立";
   } catch (err) { $("new-profile-error").textContent = err.message; $("new-profile-error").hidden = false; }
+  finally { profileControls(false); }
 });
 
 $("btn-save").addEventListener("click", async () => {
+  if (!P || profileBusy) return;
   readForm();
+  if (sourcePending()) { const error = $("planner-form-error"); error.textContent = "有尚未加入或確認的投資來源。請先加入／確認來源，或清空該區輸入，再儲存情境。"; error.hidden = false; goStep(5); error.focus(); return; }
   const invalid = P.targets.find(t => t.source_type === "manual" && t.enabled && t.expected_return == null);
   if (invalid) {
     const error = $("planner-form-error"); error.hidden = false;
-    error.textContent = `自訂來源「${invalid.stock_id}」需要明確的 planning return。`;
+    error.textContent = `自訂來源「${invalid.stock_id}」需要明確的 規劃年報酬。`;
     goStep(5); error.focus(); return;
   }
   $("planner-form-error").hidden = true;
   if (!P.name) P.name = prompt("情境名稱", "基準情境") || "基準情境";
+  const revision = editRevision, snapshot = structuredClone(P);
+  plannerSaving = true; profileControls(true); plannerStatus();
   try {
-    P = await api("/api/finance/profiles", { method: "POST", body: P });
-    await loadProfileList(P.id);
-    $("save-hint").textContent = "已儲存 " + new Date().toLocaleTimeString("zh-TW");
-    toast("已儲存情境「" + P.name + "」");
-  } catch (err) { toastError("儲存失敗：" + err.message); }
+    const saved = await api("/api/finance/profiles", { method: "POST", body: snapshot });
+    // Never replace edits made while the request was in flight.
+    P.id = saved.id;
+    savedRevision = revision;
+    await loadProfileList(saved.id);
+    toast("已儲存情境「" + snapshot.name + "」");
+  } catch (err) { toastError("儲存失敗，輸入已保留：" + err.message); }
+  finally { plannerSaving = false; profileControls(false); plannerStatus(); }
+
 });
 
 $("btn-del").addEventListener("click", async () => {
+  if (profileBusy) return;
   if (!P?.id) { toast("這個情境還沒儲存過"); return; }
   if (!confirm(`確定刪除情境「${P.name}」？`)) return;
-  await api(`/api/finance/profiles/${P.id}`, { method: "DELETE" });
-  const rows = await loadProfileList();
-  await openProfile(rows.length ? rows[0].id : null);
-  toast("已刪除");
+  profileControls(true);
+  try {
+    await api(`/api/finance/profiles/${P.id}`, { method: "DELETE" });
+    const rows = await loadProfileList();
+    await openProfile(rows.length ? rows[0].id : null);
+    toast("已刪除");
+  } catch (err) { toastError("刪除未完成：" + err.message); }
+  finally { profileControls(false); }
 });
 
 $("btn-refresh-etf").addEventListener("click", async e => {
@@ -894,13 +958,15 @@ $("btn-add-etf").addEventListener("click", async () => {
   if (!sid) return;
   readForm();
   if (P.targets.some(t => t.stock_id === sid)) { toast("已在名單中"); return; }
-  U = await api("/api/finance/universe?extra=" +
-    encodeURIComponent([...P.targets.map(t => t.stock_id), sid].join(",")));
-  P.targets.push({ stock_id: sid, enabled: 1, weight: null,
-                   expected_return: null, actual_value: null });
-  renderEtfList();
-  $("add-etf").value = "";
-  recalc();
+  const epoch = profileEpoch, button = $("btn-add-etf"); button.disabled = true;
+  try {
+    const universe = await api("/api/finance/universe?extra=" + encodeURIComponent([...P.targets.map(t => t.stock_id), sid].join(",")));
+    if (epoch !== profileEpoch) return;
+    U = universe;
+    if (!P.targets.some(t => t.stock_id === sid)) P.targets.push({ stock_id: sid, enabled: 1, weight: null, expected_return: null, actual_value: null });
+    renderEtfList(); $("add-etf").value = ""; recalc();
+  } catch (err) { toastError("加入失敗，輸入已保留：" + err.message); }
+  finally { button.disabled = false; }
 });
 
 $("investment-source").addEventListener("change", sourceMode);
@@ -908,7 +974,7 @@ $("add-manual").addEventListener("click", () => {
   readForm();
   const name = $("manual-name").value.trim(), raw = $("manual-return").value.trim();
   const error = $("manual-source-error");
-  if (!name || raw === "" || !Number.isFinite(Number(raw))) { error.textContent = "請輸入自訂名稱與明確的 planning return。"; error.hidden = false; error.focus(); return; }
+  if (!name || raw === "" || !Number.isFinite(Number(raw))) { error.textContent = "請輸入自訂名稱與明確的 規劃年報酬。"; error.hidden = false; error.focus(); return; }
   if (name.startsWith("portfolio:") || P.targets.some(t => t.stock_id === name) || U.items.some(x => x.stock_id === name)) {
     error.textContent = "名稱已被使用或屬於保留代號。"; error.hidden = false; error.focus(); return;
   }
@@ -927,7 +993,7 @@ $("source-use-scenario").addEventListener("click", () => {
   readForm();
   const key = `return_${$("source-scenario").value}`;
   $("source-return").value = P.assumptions[key];
-  $("source-assumption-note").textContent = `你已主動採用 Planner ${$("source-scenario").selectedOptions[0].textContent}情境假設 ${P.assumptions[key]}%。請再確認來源並儲存。`;
+  $("source-assumption-note").textContent = `你已主動採用 規劃${$("source-scenario").selectedOptions[0].textContent}情境假設 ${P.assumptions[key]}%。請再確認來源並儲存。`;
 });
 $("source-use-reference").addEventListener("click", () => {
   const cagr = sourceEvidence?.research?.metrics?.cagr;
@@ -938,4 +1004,5 @@ $("source-use-reference").addEventListener("click", () => {
 $("source-confirm").addEventListener("click", confirmPortfolioSource);
 $("source-cancel").addEventListener("click", () => { relinkKey = null; $("source-cancel").hidden = true; $("source-return").value = ""; clearSourceError(); $("investment-source").value = "etf"; sourceMode(); });
 
+["manual-name", "manual-return", "add-etf", "source-return"].forEach(id => $(id).addEventListener("input", plannerStatus));
 boot();

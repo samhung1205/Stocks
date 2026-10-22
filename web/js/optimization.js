@@ -39,7 +39,7 @@
     loading("載入參數穩健性研究", "整理參數穩健性研究紀錄。");
     try {
       const [catalog, jobs] = await Promise.all([loadCatalog(), api("/api/strategy-lab/optimization/jobs?limit=50")]);
-      setRoot(`<header class="lab-page-head"><div><a class="back-link" href="strategy.html">← 策略實驗室</a><div class="eyebrow">策略研究 / 樣本內探索</div>
+      setRoot(`<header class="lab-page-head"><div><a class="back-link" href="strategy.html">← 策略實驗室</a>
         <h1>參數穩健性</h1><p class="muted">比較參數區域、敏感度與資料品質，不進行單一參數點選拔。</p></div>
         <a class="btn" href="strategy.html?optimization=new">建立新研究</a></header>${notice()}
         <section class="card lab-section"><div class="section-head"><div><h2>研究紀錄</h2><p class="muted">依建立時間顯示，不以績效排名。</p></div></div>
@@ -71,7 +71,7 @@
     const catalog = state.catalog, template = catalog.templates[templateKey], window = catalog.research_window;
     const source = state.sourceResult?.request;
     setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="strategy.html?optimization=home">← 參數穩健性</a>
-      <div class="eyebrow">策略研究 / 穩健性卷宗</div><h1>建立參數穩健性研究</h1><p class="muted">${state.strategy ? `${esc(state.strategy.name)} · v${esc(source?.strategy_version_no || state.strategy.latest_version?.version_no)}` : "模板基準"}</p></div></header>${notice()}
+      <h1>建立參數穩健性研究</h1><p class="muted">${state.strategy ? `${esc(state.strategy.name)} · v${esc(source?.strategy_version_no || state.strategy.latest_version?.version_no)}` : "模板基準"}</p></div></header>${notice()}
       <form id="optimization-form" class="card optimization-form">
         <div class="section-head"><div><h2>研究設定</h2><p class="muted">設定排序目標與運算預算；目標只用於決定探索順序。</p></div></div>
         <div class="form-grid">
@@ -87,8 +87,8 @@
         <fieldset class="choice-field"><legend>搜尋空間</legend><label class="choice-row"><input type="radio" name="space-mode" value="default" checked><span><strong>預設研究網格</strong><small>${template.default_grid_size} 個結構化參數點</small></span></label>
           <label class="choice-row"><input type="radio" name="space-mode" value="custom"><span><strong>自訂網格</strong><small>只搜尋系統允許的參數軸與權重群組。</small></span></label></fieldset>
         <details class="more" id="advanced-space"><summary>進階搜尋空間設定</summary><p class="fin-note">修改參數軸的值列表或權重群組的步長。超出允許範圍會被拒絕。</p>
-          <label for="opt-space">搜尋空間 JSON</label><textarea id="opt-space" class="code-input" rows="14">${esc(JSON.stringify(template.default_space, null, 2))}</textarea>
-          <details class="more nested"><summary>可搜尋參數與範圍</summary><pre class="contract-view">${esc(JSON.stringify(template.allowed, null, 2))}</pre></details></details>
+          <label for="opt-space">搜尋空間 JSON</label><textarea id="opt-space" aria-describedby="opt-space-error" class="code-input" rows="14">${esc(JSON.stringify(template.default_space, null, 2))}</textarea>
+          <p id="opt-space-error" role="alert" class="inline-error" hidden></p><details class="more nested"><summary>可搜尋參數與範圍</summary><pre class="contract-view">${esc(JSON.stringify(template.allowed, null, 2))}</pre></details></details>
         <div class="builder-actions static"><a class="btn ghost" href="strategy.html?optimization=home">取消</a><span class="muted">建立後可取消或續跑；已完成的參數點不重算。</span><button type="submit">建立並執行</button></div>
       </form>`);
     $("opt-template").addEventListener("change", event => renderCreate(event.target.value));
@@ -100,6 +100,7 @@
 
   async function submitCreate(event) {
     event.preventDefault(); const button = event.submitter; button.disabled = true; button.textContent = "建立中…";
+    $("opt-space-error").hidden = true; $("opt-space").removeAttribute("aria-invalid");
     try {
       const key = $("opt-template").value;
       const body = { template_key: key, objective: $("opt-objective").value,
@@ -112,7 +113,17 @@
       const queued = await api("/api/strategy-lab/optimization/jobs", { method: "POST", body });
       const strategy = state.strategy ? `&id=${state.strategy.id}` : "";
       location.href = `strategy.html?optimization=${queued.job_id}${strategy}`;
-    } catch (error) { toastError(`無法建立：${error.message}`); button.disabled = false; button.textContent = "建立並執行"; }
+    } catch (error) {
+      if (document.querySelector("[name='space-mode']:checked").value === "custom") {
+        const field = $("opt-space"), box = $("opt-space-error");
+        $("advanced-space").open = true; field.setAttribute("aria-invalid", "true");
+        box.hidden = false; box.textContent = `搜尋空間未提交：${error.message}。輸入已保留，請修正後重試。`;
+        field.focus();
+        const position = String(error.message).match(/position (\d+)/i);
+        if (position) { const at = Number(position[1]); field.setSelectionRange(at, at + 1); }
+      } else toastError(`無法建立：${error.message}`);
+      button.disabled = false; button.textContent = "建立並執行";
+    }
   }
 
   async function jobPage(jobId, strategyId) {
@@ -135,7 +146,7 @@
 
   function renderProgress() {
     const job = state.job, p = job.progress, complete = p.completed + p.failed;
-    setRoot(`<header class="lab-page-head compact"><div><a class="back-link" href="strategy.html?optimization=home">← 參數穩健性</a><div class="eyebrow">策略研究 / 參數穩健性</div><h1>${esc(label(job.template_key))}</h1><p class="muted">${esc(statusLabel(job.status))} · ${complete} / ${p.total} 個參數點</p></div></header>${notice()}
+    setRoot(`<header class="lab-page-head compact"><div><a class="back-link" href="strategy.html?optimization=home">← 參數穩健性</a><h1>${esc(label(job.template_key))}</h1><p class="muted">${esc(statusLabel(job.status))} · ${complete} / ${p.total} 個參數點</p></div></header>${notice()}
       <section class="card run-progress optimization-progress"><div class="state-spinner" aria-hidden="true"></div><div><h2>${job.status === "queued" ? "等待建立研究資料" : "計算參數網格"}</h2>
       <p class="muted">已完成 ${p.completed}，失敗 ${p.failed}，快取 ${p.cached}。進行中的參數點會在算完後才回應取消。</p>
       <div class="progress-track determinate" role="progressbar" aria-label="參數穩健性研究進度" aria-valuemin="0" aria-valuemax="${p.total}" aria-valuenow="${complete}"><div style="width:${Math.max(2, p.fraction * 100)}%"></div></div>
@@ -160,11 +171,11 @@
     }
     const robust = state.robustness, analysis = robust.analysis, plateau = analysis.plateau, coverage = robust.search_coverage;
     const edge = plateau.edge_of_search_range || [];
-    setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="strategy.html?optimization=home">← 參數穩健性</a><div class="eyebrow">樣本內參數穩健性 / ${esc(statusLabel(job.status))}</div>
-      <h1>${esc(state.strategy?.name || label(job.template_key))}</h1><p class="muted">${state.strategy ? `策略 v${esc(state.strategy.latest_version?.version_no)}` : "模板研究基準"}</p></div>
+    setRoot(`<header class="lab-page-head compact research-header"><div><a class="back-link" href="strategy.html?optimization=home">← 參數穩健性</a>
+      <h1>${esc(state.strategy?.name || label(job.template_key))}</h1><p class="muted">${job.provenance?.strategy_version_no ? `固定策略 v${esc(job.provenance.strategy_version_no)}` : "未記錄固定策略版本 · 定義以此研究快照為準"}</p></div>
       <div class="head-actions">${job.status === "completed" ? `<a class="btn" href="strategy.html?walkforward=new&source_opt=${encodeURIComponent(job.id)}${state.strategy ? `&id=${state.strategy.id}` : ""}">樣本外驗證（OOS）</a>` : ""}${job.status === "cancelled" || job.status === "failed" ? resumeButton() : ""}<a class="btn ghost" href="strategy.html?optimization=new&template=${encodeURIComponent(job.template_key)}">新研究</a></div>
-      ${researchMetadata([["研究身分", state.strategy?.name || label(job.template_key)], ["版本", state.strategy ? `v${state.strategy.latest_version?.version_no || "—"}` : "模板基準"], ["證據型別", "樣本內（IS）探索 · 不選最佳參數"], ["研究期間", `${robust.research_window[0]} — ${robust.research_window[1]}`], ["來源", `參數穩健性研究 ${job.id}`], ["目前階段", "穩健區域探索"], ["下一步", "檢查邊界與資料品質，再進入 OOS"]])}</header>
-      ${researchContext(robust)}${robustnessSummary(analysis, edge)}${qualitySignals(robust, state.results.rows, edge)}
+<p class="research-period">樣本內（IS）探索 · ${esc(robust.research_window[0])} — ${esc(robust.research_window[1])} · ${esc(statusLabel(job.status))}</p></header>
+      ${notice()}${robustnessSummary(analysis, edge)}${qualitySignals(robust, state.results.rows, edge)}<details class="more research-provenance"><summary>研究來源、期間與完整設定</summary>${researchContext(robust)}<pre class="contract-view">${esc(JSON.stringify(job.provenance, null, 2))}</pre></details>
       ${surfaceSection()}${sensitivitySection(analysis.axis_sensitivity)}${resultsSection()}`);
     StrategyCharts.heatmap("optimization-heatmap", state.surface, pathLabel);
     bindSurfaceControls(); bindSorting(); bindResume();
@@ -173,7 +184,7 @@
   function researchContext(robust) {
     const c = robust.search_coverage, job = state.job;
     return `<section class="card optimization-section" aria-labelledby="research-context-title"><div class="section-head"><div><h2 id="research-context-title">研究脈絡</h2></div></div>
-      <dl class="context-grid"><div><dt>策略 / 版本</dt><dd>${esc(state.strategy?.name || label(job.template_key))} · ${state.strategy ? `v${esc(state.strategy.latest_version?.version_no)}` : "模板基準"}</dd></div>
+      <dl class="context-grid"><div><dt>策略 / 版本</dt><dd>${esc(state.strategy?.name || label(job.template_key))} · ${job.provenance?.strategy_version_no ? `v${esc(job.provenance.strategy_version_no)}` : "未記錄固定版本"}</dd></div>
       <div><dt>研究期間</dt><dd>${esc(robust.research_window[0])} — ${esc(robust.research_window[1])}</dd></div><div><dt>探索目標</dt><dd>${esc(label(robust.objective.name))} · ${robust.objective.higher_is_better ? "數值較高優先" : "數值較低優先"}</dd></div>
       <div><dt>已評估參數點</dt><dd>${c.runs_completed} / ${c.grid_size} · 網格 ${(c.grid_fraction_evaluated * 100).toFixed(1)}%</dd></div><div><dt>公告模式</dt><dd>${esc(label(robust.publication_mode))}</dd></div>
       <div><dt>預算 / 隨機種子</dt><dd>上限 ${job.search.max_runs} 次 · seed ${job.search.seed}${job.search.sampled ? " · 已取樣" : ""}</dd></div></dl>${notice()}</section>`;
@@ -183,7 +194,8 @@
     const p = analysis.plateau, dispersion = analysis.top_set_dispersion?.metrics?.[state.robustness.objective.metric] || {};
     return `<section class="card optimization-section" aria-labelledby="robustness-title"><div class="section-head"><div><h2 id="robustness-title">穩健性摘要</h2><p class="muted">分類是對目前網格相鄰關係的描述，不是穩定最適參數認證。</p></div></div>
       <div class="robustness-layout"><div class="robustness-label"><span class="robustness-mark" aria-hidden="true"></span><div><span>曲面分類</span><strong>${esc(label(p.label))}</strong></div></div>
-      <dl class="robustness-stats"><div><dt>區域大小</dt><dd>${p.region_size} / ${p.upper_set_size}</dd></div><div><dt>目標值分散</dt><dd>${num(analysis.spread, 4)}</dd></div><div><dt>高值集合離散度</dt><dd>IQR ${num(dispersion.iqr, 4)} · σ ${num(dispersion.std, 4)}</dd></div><div><dt>峰值鄰點落差</dt><dd>${p.peak_drop == null ? "—" : pct(p.peak_drop * 100)}</dd></div></dl></div>
+      <dl class="robustness-stats"><div><dt>區域大小</dt><dd>${p.region_size} / ${p.upper_set_size}</dd></div><div><dt>目標值全距</dt><dd>${num(analysis.spread, 4)}</dd></div><div><dt>高值集合離散度</dt><dd>IQR ${num(dispersion.iqr, 4)} · σ ${num(dispersion.std, 4)}</dd></div><div><dt>峰值鄰點落差</dt><dd>${p.peak_drop == null ? "—" : pct(p.peak_drop * 100)}</dd></div></dl></div>
+      <details class="more metric-glossary"><summary>如何讀這些數字</summary><dl><dt>目標值全距</dt><dd>已評估目標值的最大值減最小值，表示整個搜尋網格的差異。</dd><dt>IQR（四分位距）</dt><dd>高值集合中間 50% 數值的範圍，越大表示這批參數結果越分散。</dd><dt>σ（標準差）</dt><dd>高值集合數值偏離平均值的程度；較小也不代表樣本外可靠。</dd><dt>峰值鄰點落差</dt><dd>峰值減去相鄰點中位數，再除以整體全距；高落差表示尖峰較孤立，並非報酬率。</dd></dl></details>
       ${edge.length ? `<div class="edge-alert" role="alert"><span aria-hidden="true">!</span><div><strong>候選區域位於目前搜尋邊界，可能需要擴大搜尋範圍</strong><p>邊界參數軸：${edge.map(pathLabel).map(esc).join("、")}。即使分類為連續候選區域（plateau），也不表示已找到穩定最適參數。</p></div></div>` : ""}
       <details class="more"><summary>分類規則與原因</summary><p class="muted">${esc(p.reasons.join(", "))}</p><pre class="contract-view">${esc(JSON.stringify(analysis.rule, null, 2))}</pre></details></section>`;
   }
