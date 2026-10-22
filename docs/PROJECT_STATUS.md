@@ -1,6 +1,6 @@
 # Project Status
 
-Working-tree baseline through 2026-10-06; instruction/DB-boundary audit on 2026-10-13 and invitation-only account implementation on 2026-10-14. Local/production v7 migration and account rollout were verified on 2026-10-14, preserving the owner login. Market-data completeness still requires a current freshness check. The v1.0.0 tag is the Stage K2 checkpoint; later work is not part of that release. The documentation map is [README.md](README.md); dated stage reports live in `docs/history/`, and research semantics live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md).
+Working-tree baseline through 2026-10-06; instruction/DB-boundary audit on 2026-10-13 and invitation-only account implementation on 2026-10-14. Local/production v7 migration and account rollout were verified on 2026-10-14, preserving the owner login. UI improvements were deployed on 2026-10-23 without a schema change; market-data completeness still requires a current authenticated freshness check. The v1.0.0 tag is the Stage K2 checkpoint; later work is not part of that release. The documentation map is [README.md](README.md); dated stage reports live in `docs/history/`, and research semantics live in [RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md).
 
 ## Completed stages (A → L1.1)
 
@@ -33,11 +33,13 @@ Working-tree baseline through 2026-10-06; instruction/DB-boundary audit on 2026-
 
 Each stage's own report (`docs/history/stage-<n>-*.md`) is the detailed, point-in-time record of what was built and validated in that stage; this file is the rolled-up "what's true right now."
 
-## Deployment state (account rollout verified 2026-10-14)
+## Deployment state (UI release verified 2026-10-23)
 
 - Railway remains one Uvicorn worker/replica, persistent `/data`, Taiwan-time scheduling. Account deployment `17331cbf` succeeded on 2026-10-14: original owner HTTPS login, admin/private reads, Secure cookies, CSRF and logout revocation passed. Anonymous access is limited to health and minimal account-entry surfaces. See [Railway deployment record](railway-deployment.md).
+- UI release `8307de34` succeeded on 2026-10-23 after a consistent production DB backup. Schema remains v7; post-deploy DB integrity, startup scheduler, HTTPS health, login entry and anonymous private-page/API protection passed. This release did not repeat an authenticated browser workflow; see the [deployment record](railway-deployment.md) for scope.
+- At this deployment's read-only date check, daily quotes ended 2026-10-22, valuations 2026-10-21 and the separate research benchmark 2026-09-18. Latest dates do not establish complete trading-session coverage or benchmark freshness.
 - Local and Railway SQLite files remain separate, including subsequent password changes. Both were backed up and migrated independently; all original values in the 24 private tables were preserved and old roots assigned to owner id=1. Market facts are shared within each deployment; private records are per-account.
-- At the last data verification on 2026-10-05, daily refresh was `partial`: 2026-09-29 and 2026-09-30 sessions remained missing; valuation and research benchmark dates lagged. No later data check is recorded here. Read the live freshness response before claiming the cloud data is current.
+- At the last session-coverage verification on 2026-10-05, daily refresh was `partial`: 2026-09-29 and 2026-09-30 sessions remained missing. The 2026-10-23 date-only check above did not re-evaluate those gaps. Read the live authenticated freshness response before claiming the cloud data is complete.
 
 ## UI batch B (2026-10-23, local verification)
 

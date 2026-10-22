@@ -1,6 +1,6 @@
 # Railway 部署紀錄
 
-更新：2026-10-14。**邀請制帳號已部署，本機與 Railway DB 均完成 v7 遷移，原管理員帳密與既有資料保留。正式 HTTPS 登入、權限、私人資料讀取、CSRF 及登出撤銷已驗證。** 早期 Basic 部署紀錄保留歷史語境。
+更新：2026-10-23。**邀請制帳號與 UI 改善已部署；本機與 Railway DB 均維持 v7，原管理員帳密與既有資料保留。** 2026-10-14 的登入、權限、私人資料讀取、CSRF 及登出撤銷驗證為當日證據；本次重新驗證範圍見下節。早期 Basic 部署紀錄保留歷史語境。
 
 正式網址：[台股研究平台登入](https://stocks-production-eeb3.up.railway.app/login.html)。原擁有人使用既有帳密登入管理員，朋友由管理員邀請，各自私人資料隔離，沒有公開註冊。
 
@@ -61,6 +61,17 @@
 - 正式 HTTPS 驗收通過：原帳密登入 200，me 為 id=1/admin；帳號頁、管理員帳號列表、Planner、持股、策略及 Portfolio 讀取 200。匿名 me 401、帳號頁 303 至登入頁；Secure/HttpOnly/SameSite=Lax cookies；缺 CSRF logout 403，正確 logout 200，撤銷後 me 401。TLS 未放寬。沒有列印任何私人頁面的回應內容。
 - 本機服務已在 loopback 8787 啟動，使用相同原帳密完成同一組登入／讀取／CSRF／登出檢查。本機 HTTP 的非 Secure cookie 僅限此 loopback 開發設定，Railway 固定 Secure。
 - 本次沒有送出真實邀請、變更朋友權限或執行正式還原演練。成員禁止管理與 A/B 資料隔離由隔離 DB 測試驗證；資料 freshness 完整性仍依當下回應與研究契約核對，不能從帳號部署成功推定。
+
+## 2026-10-23 UI 改善與日誌研究助手部署
+
+- 程式 commit `1db91e7`：日誌本機證據草稿、原計畫回看、個股證據與圖表表格、各頁易用性改善。`app/db/tables.py` 與 `app/db/migrations.py` 均無變更；日誌使用原有欄位，故沒有執行資料庫遷移或修改正式私人資料。
+- 在本機資料庫的 SQLite backup API 隔離副本上執行完整 `unittest`，480 項全數通過；Python `compileall`、改動的 JS 語法與 `git diff --check` 通過。先前空白隔離 DB 因既有 Walk Forward API 測試需要交易日曆而有一項錯誤，改用文件規定的隔離 fixture 副本後通過，未將測試寫入日常 DB。
+- 部署前只讀核對正式 DB：schema v7、`PRAGMA quick_check=ok`，Backtest／Optimization／Walk Forward／Portfolio 均無 queued/running 工作。以 `scripts/backup_sqlite.py` 建立 `/data/backups/pre-ui-release-20261023.db`（645,345,280 bytes，`integrity_check=ok`）；既有工作區 SSH 公鑰已登錄，無需新增金鑰。
+- 壓縮副本也已下載到本機忽略版控的 `data/backups/pre-ui-release-20261023-cloud.db.gz`；`gzip -t` 通過，解壓資料的 SHA-256 與遠端原始快照完全相同。Railway volume SFTP 曾逾時，改用既有 SSH 連線傳輸完成。
+- 沿用現有 CLI 來源、volume 與環境設定，`railway up --service stocks --environment production` 部署 `8307de34-7e7b-42b6-afc5-90b9a0ded530`，Railway 顯示 SUCCESS 且健康檢查通過。新容器啟動、排程器啟動；startup catch-up 當時回報 `already_fresh`，這不等於獨立核實所有行情與研究資料完整。
+- 部署後遠端再次確認 schema v7、`quick_check=ok`、備份仍存在、四類研究工作無 queued/running；`STOCKS_IMPORT_MODE=0`、`STOCKS_AUTH_MODE=accounts`，`TZ`／`AUTO_REFRESH_TIMEZONE` 都是 `Asia/Taipei`。公開 HTTPS `/api/health` 為 200／`status: ok`、登入頁 200；未登入私人 HTML 轉至登入頁（303）、日誌與 Planner API 回 401。
+- 當次只讀最新日期：`daily_quotes` 2026-10-22、`valuations` 2026-10-21、`benchmark_series` 2026-09-18；交易日曆已排到 2026-12-31。`MAX(date)` 只說明最近一筆日期，不證明期間每個交易日都完整；估值及研究基準仍需分別檢查與維護。
+- 未持有使用者帳密，本次未重新執行登入後的真實資料操作與瀏覽器驗收。行情完整性仍應看登入後的資料狀態及獨立研究基準欄位。
 
 ## 下一步
 
