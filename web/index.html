@@ -29,8 +29,8 @@
     <div class="card"><div class="k">市場寬度（漲/跌）</div><div class="v" id="breadth">—</div><div class="muted" id="breadth-total">—</div></div>
   </div></section>
 
-  <div class="grid cols-2 mt">
-    <div class="card">
+  <div class="grid cols-2 mt dashboard-overview">
+    <div class="card dashboard-market-panel">
       <h2>加權指數走勢</h2>
       <p class="dashboard-chart-period muted">近 60 個交易日 · 收盤指數（點）</p>
       <div id="chart-state" class="dashboard-empty" role="status"><p id="chart-state-text">正在載入市場資料…</p><button id="chart-maintenance" class="ghost" type="button" hidden>前往資料維護</button></div>
@@ -43,18 +43,28 @@
         </div>
       </details>
     </div>
-    <div class="card">
+    <div class="card dashboard-watch-panel">
       <div class="dashboard-panel-head"><h2 id="watch-heading" tabindex="-1">觀察名單速覽</h2><a href="watchlist.html">完整名單</a></div>
+      <div id="watch-filters" class="watch-preview-filters" hidden>
+        <label>決策階段<select id="watch-tier" aria-controls="watch-table"><option value="all">全部階段</option></select></label>
+        <label>產業主題<select id="watch-industry" aria-controls="watch-table"><option value="all">全部產業</option></select></label>
+      </div>
       <div id="watch-error" class="dashboard-error" hidden>
         <div role="alert"><strong>觀察名單無法載入</strong><p id="watch-error-text"></p></div>
         <button id="watch-retry" class="ghost" type="button">重新載入觀察名單</button>
       </div>
       <div id="watch-empty" class="dashboard-empty" hidden><p>觀察名單尚無股票。搜尋股票後，可在個股頁加入名單。</p><button id="watch-search" class="ghost" type="button">搜尋股票</button></div>
-      <div class="scroll-x">
+      <div id="watch-filter-empty" class="dashboard-empty" hidden><p>這個階段與產業主題目前沒有股票。</p><button id="watch-reset" class="ghost" type="button">清除篩選</button></div>
+      <div id="watch-preview-region" class="scroll-x watch-preview-region" tabindex="0" role="region" aria-label="觀察名單速覽，可捲動查看">
         <table class="data" id="watch-table">
+          <caption class="sr-only">篩選後的觀察名單，每頁最多 4 檔；收盤價附資料日期。</caption>
           <thead><tr><th scope="col" class="l">股票</th><th scope="col">分級</th><th scope="col">警訊</th><th scope="col">收盤</th><th scope="col" class="watch-detail">漲跌</th><th scope="col" class="watch-detail">本益比</th></tr></thead>
           <tbody><tr><td colspan="6" class="muted l">載入中…</td></tr></tbody>
         </table>
+      </div>
+      <div id="watch-pagination" class="watch-preview-pagination" hidden>
+        <span id="watch-page-count" class="muted" role="status" tabindex="-1"></span>
+        <div><button id="watch-prev" class="ghost small" type="button" aria-controls="watch-table">上一頁</button><button id="watch-next" class="ghost small" type="button" aria-controls="watch-table">下一頁</button></div>
       </div>
       <p class="watch-mobile-note muted">漲跌與本益比請見「完整名單」。</p>
     </div>
@@ -121,6 +131,7 @@
 
 <script src="js/common.js"></script>
 <script src="js/data-status.js"></script>
+<script src="js/dashboard-watchlist.js"></script>
 <script src="js/data-maintenance.js" defer></script>
 <script>
 async function loadFreshness() {
@@ -289,18 +300,7 @@ async function loadWatchlist() {
   retry.textContent = "正在重新載入…";
   try {
     const rows = await api("/api/watchlist");
-    const tierLabel = { research: "研究中", waiting: "等買點", holding: "持有中" };
-    document.querySelector("#watch-table tbody").innerHTML = rows.map(r => `
-      <tr>
-        <td class="l"><a href="stock.html?id=${encodeURIComponent(r.stock_id)}"><span class="watch-stock-id">${escapeHtml(r.stock_id)}</span><span class="watch-stock-name">${escapeHtml(r.name)}</span></a></td>
-        <td><span class="badge tier">${escapeHtml(tierLabel[r.tier] || r.tier)}</span></td>
-        <td>${r.alerts.length ? `<a class="badge warn" href="stock.html?id=${encodeURIComponent(r.stock_id)}#stock-risk" aria-label="查看 ${escapeHtml(r.name)} 的 ${r.alerts.length} 項警訊">${r.alerts.length} 項</a>` : '<span class="muted">—</span>'}</td>
-        <td>${fmt.num(r.close)}</td>
-        <td class="watch-detail ${fmt.cls(r.change)}">${fmt.sign(r.change)}</td>
-        <td class="watch-detail">${fmt.num(r.pe, 1)}</td>
-      </tr>`).join("");
-    document.getElementById("watch-table").hidden = !rows.length;
-    document.getElementById("watch-empty").hidden = !!rows.length;
+    window.watchPreview.setRows(rows);
     document.getElementById("watch-error").hidden = true;
     watchlistLoaded = true;
     if (returnFocus) document.getElementById("watch-heading").focus();
