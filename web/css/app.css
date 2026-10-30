@@ -1327,9 +1327,19 @@ nav.topbar .searchbox input:focus-visible, .search-results a:focus-visible, butt
 .screen-groups .screen-checks { display: grid; gap: 8px; }
 .screen-groups details { margin-top: 12px; }
 .screen-groups input[type=number] { width: 100%; }
-.watch-alerts { max-width: 30ch; white-space: normal; }
-.watch-alerts summary { cursor: pointer; color: var(--status-caution); }
-.watch-alerts ul { padding-left: 18px; }
+.watch-tier td { vertical-align: top; }
+.watch-tier .note-cell { max-width: 220px; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
+.watch-tier .note-cell > span { white-space: pre-wrap; }
+.watch-alerts { min-width: 8rem; white-space: normal; text-align: left; line-height: 1.65; }
+.watch-alerts[open] { width: clamp(18rem, 28vw, 28rem); }
+.watch-alerts summary { cursor: pointer; color: var(--status-caution); text-align: left; }
+.watch-alerts ul { margin: 12px 0 0; padding-left: 1.25em; list-style-position: outside; }
+.watch-alerts li { padding-left: .25em; overflow-wrap: anywhere; }
+.watch-alerts li + li { margin-top: 8px; }
+@media (max-width: 600px) {
+  .watchlist-main .watch-tier table.data th:first-child,
+  .watchlist-main .watch-tier table.data td:first-child { position: static; }
+}
 #watch-status:empty { display: none; }
 @media (max-width: 760px) {
   .screen-groups { grid-template-columns: 1fr; gap: 24px; }
@@ -1345,5 +1355,4 @@ nav.topbar .searchbox input:focus-visible, .search-results a:focus-visible, butt
 .research-header > .research-provenance { grid-column: 1/-1; margin-bottom: 0; }
 @media (max-width: 600px) { .portfolio-result .section-head { flex-direction: column; gap: 12px; } }
 /* Anchor visually hidden names inside the table's own scrolling container. */
-.watch-alerts { min-width: 8rem; }
 .watch-alerts summary { position: relative; }

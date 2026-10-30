@@ -45,10 +45,10 @@ async function load(focusSid = null) {
     card.className = "card watch-tier";
     card.innerHTML = `
       <div class="watch-tier-head"><h2>${label}</h2><span class="muted">${rows.length} 檔</span></div>
-      ${rows.length ? `<div class="scroll-x"><table class="data">
+      ${rows.length ? `<div class="scroll-x" tabindex="0" role="region" aria-label="${label}觀察名單，可左右捲動"><table class="data">
         <thead><tr>
           <th class="l">股票</th><th class="l">產業</th><th>收盤</th><th>漲跌</th>
-          <th class="rt-col">盤中價</th><th>PE</th><th>殖利率</th><th>警訊</th>
+          <th class="rt-col">盤中價</th><th>PE</th><th>殖利率</th><th class="l">警訊</th>
           <th class="l">備註</th><th></th>
         </tr></thead>
         <tbody>${rows.map(r => `
@@ -60,10 +60,10 @@ async function load(focusSid = null) {
             <td class="rt-cell muted">—</td>
             <td>${fmt.num(r.pe, 1)}</td>
             <td>${fmt.pct(r.dividend_yield)}</td>
-            <td>${r.alerts.length
+            <td class="l watch-alert-cell">${r.alerts.length
               ? `<details class="watch-alerts"><summary>${r.alerts.length} 項警訊<span class="sr-only">：${escapeHtml(r.stock_id)} ${escapeHtml(r.name)}</span></summary><ul>${r.alerts.map(a => `<li>${escapeHtml(a.message)}</li>`).join("")}</ul></details>`
               : '<span class="muted">—</span>'}</td>
-            <td class="l note-cell" style="max-width:220px;white-space:normal">
+            <td class="l note-cell">
               <span class="muted">${escapeHtml(r.note || "")}</span></td>
             <td>
               <select class="small tier-sel" style="width:96px" aria-label="${r.stock_id} ${r.name} 觀察分級">
