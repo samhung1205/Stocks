@@ -13,6 +13,7 @@ from app.db import tables as t
 from app.db.migrations import migrate
 from app.services import data_freshness as fresh
 from app.services import history_backfill as jobs
+from app.services import market_coverage
 
 
 class FreshnessTestBase(unittest.TestCase):
@@ -22,6 +23,7 @@ class FreshnessTestBase(unittest.TestCase):
         migrate(self.engine)
         self.patches = [
             patch.object(fresh, "engine", self.engine),
+            patch.object(market_coverage, 'MIN_MARKET_ROWS', {'twse': 1, 'tpex': 1}),
             patch.object(fresh.config, "DATA_DIR", Path(self.tmp.name)),
             patch.object(fresh.config, "AUTO_REFRESH_ENABLED", True),
             patch.object(fresh.config, "AUTO_REFRESH_MAX_RETRIES", 3),
@@ -40,9 +42,20 @@ class FreshnessTestBase(unittest.TestCase):
         self.engine.dispose()
         self.tmp.cleanup()
 
-    def _set_quote_date(self, date):
+    def _set_quote_date(self, date, calendar=True):
+        # Fixtures certify all four datasets; quote-only/incomplete cases below
+        # deliberately bypass this helper. Floors are 1 per market in this suite.
         with self.engine.begin() as conn:
-            upsert_many(conn, t.daily_quotes, [{"stock_id": "2330", "date": date, "close": 100}])
+            upsert_many(conn, t.stocks, [{'stock_id':'2330','name':'TW fixture','market':'twse'}, {'stock_id':'6488','name':'TP fixture','market':'tpex'}])
+            if calendar:
+                upsert_many(conn, t.trading_calendar, [{'date': date}])
+            for table, fields in (
+                (t.daily_quotes, {'close':100}),
+                (t.institutional_daily, {'total_net':100}),
+                (t.valuations, {'pe':20}),
+            ):
+                upsert_many(conn, table, [{'stock_id':sid,'date':date,**fields} for sid in ('2330','6488')])
+            upsert_many(conn, t.market_summary, [{'date':date,'taiex_close':20000,'total_amount':100000}])
 
     def _fill_weekdays(self, start_exclusive, end_inclusive):
         """Simulate a real backfill_history()/update_daily() call that actually
@@ -153,7 +166,7 @@ class StartupCatchupTests(FreshnessTestBase):
         also treats the intervening Friday as a candidate session, see
         _missing_sessions_for_write's documented tradeoff). Must still catch the
         real hole, not report 'fresh' just because MAX(date) reached Tuesday."""
-        self._set_quote_date("2026-09-24")  # Thursday, no trading_calendar rows anywhere
+        self._set_quote_date("2026-09-24", calendar=False)  # Thursday, no trading_calendar rows anywhere
 
         def fake_backfill_fills_everything(days):
             self._fill_weekdays("2026-09-24", "2026-09-29")  # Fri + Mon + Tue
@@ -174,7 +187,7 @@ class StartupCatchupTests(FreshnessTestBase):
         """The bounded lookback must only ever widen the window using REAL
         trading_calendar evidence -- without it, weekday-guessing backward past
         local_max would flag out-of-scope history as false-positive holes."""
-        self._set_quote_date("2026-09-24")  # only one date on record; nothing before it was ever attempted
+        self._set_quote_date("2026-09-24", calendar=False)  # only one date on record; nothing before it was ever attempted
         with patch.object(fresh.twse, "resolve_latest_trading_date", return_value="2026-09-25"), \
              patch("app.services.market_daily.update_daily",
                    side_effect=lambda: (self._set_quote_date("2026-09-25"),
@@ -226,7 +239,9 @@ class IncompleteAndRetryTests(FreshnessTestBase):
              patch("app.services.market_daily.update_daily",
                    return_value={"trade_date": "2026-09-25", "quotes": 12}):
             fresh.attempt_refresh("scheduler")
-            self._set_quote_date("2026-09-25")  # partial fetch did write the date's row(s)
+            with self.engine.begin() as conn:
+                upsert_many(conn, t.trading_calendar, [{'date':'2026-09-25'}])
+                upsert_many(conn, t.daily_quotes, [{'stock_id':'2330','date':'2026-09-25','close':100}])  # partial fetch did write the date's row(s)
             result = fresh.attempt_refresh("scheduler")
         self.assertTrue(result["attempted"], "a still-partial date must keep being retried")
 
@@ -429,7 +444,7 @@ class StatusContractTests(FreshnessTestBase):
         self.assertEqual(s["pending_missing_dates_source"], "trading_calendar")
 
     def test_pending_missing_dates_falls_back_to_labelled_weekday_estimate(self):
-        self._set_quote_date("2026-09-22")  # Tuesday; no trading_calendar rows populated
+        self._set_quote_date("2026-09-22", calendar=False)  # Tuesday; no trading_calendar rows populated
         with patch.object(fresh.twse, "resolve_latest_trading_date", return_value="2026-09-25"):
             s = fresh.status()
         self.assertEqual(s["pending_missing_dates_source"], "weekday_estimate")

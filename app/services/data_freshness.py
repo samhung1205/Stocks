@@ -26,6 +26,7 @@ from app import config
 from app.db import engine, query_all, query_one, upsert_many
 from app.db.tables import daily_refresh_runs
 from app.datasources import twse
+from app.services import market_coverage
 
 log = logging.getLogger(__name__)
 
@@ -213,12 +214,11 @@ def _pending_missing_dates(conn, local_max: str | None, target: str | None) -> d
     (real evidence); falls back to a clearly-labelled weekday estimate when the
     calendar has no coverage. Purely informational; the write-path decision
     (_missing_sessions_for_write) is the one that gates completed/partial."""
-    if not target or not local_max or local_max >= target:
+    if not target or not local_max:
         return {"dates": [], "source": "none"}
-    sessions = _session_dates_in_window(conn, local_max, target)
-    if sessions is not None:
-        return {"dates": sessions, "source": "trading_calendar"}
-    return {"dates": _weekday_candidates(local_max, target), "source": "weekday_estimate"}
+    missing, source = _missing_sessions_for_write(conn, local_max, target)
+    return {"dates": missing, "source": source}
+
 
 
 def _retry_rows_for(conn, target: str) -> list[dict]:
@@ -327,36 +327,38 @@ def _record_attempt(trigger: str, target: str, fetch) -> dict:
     # that exact scope (auto-driven triggers only) rather than silently
     # expanding what a manual "立即更新" button does; deep-fetch's own
     # success/failure never feeds back into this attempt's status.
-    if status == "completed" and not was_completed_before and trigger != "manual":
+    if status == "completed" and not was_completed_before and trigger in ('scheduler', 'startup_catchup'):
         _watchlist_deep_refresh()
     return {"attempted": True, "run_id": run_id, "status": status,
             "target_date": target, "result": result, "error": error}
 
 
 def _run_and_record(trigger: str, target: str, local_max: str, missing: list[str]) -> dict:
-    """Auto-refresh path (startup/scheduler): the catch-up strategy is chosen
-    from the COUNT of actual missing trading sessions (Stage L1.1), never a raw
-    calendar-day gap -- a calendar-day threshold can't tell "one session missing"
-    from "two sessions missing 3 calendar days apart because a holiday sits in
-    between", which is exactly how an internal hole used to slip through. More
-    than one missing session reuses the existing multi-day light backfill
-    instead of only ever fetching "latest"; either way, completion is verified
-    afterward by re-checking for missing sessions, not by MAX(date) alone."""
+    """Repair historical holes with backfill, even when exactly one is missing.
+
+    Current-day-only gaps use update_daily. Both paths are rechecked against
+    actual session and per-market dataset evidence before completion.
+    """
     from app.services import market_daily
 
     def fetch():
-        if len(missing) <= 1:
-            result = market_daily.update_daily()
-        else:
-            span_days = (dt.date.fromisoformat(target) - dt.date.fromisoformat(missing[0])).days + 2
+        with engine.connect() as conn:
+            datasets = market_coverage.check(conn, target)
+        needs = sorted(set(missing + market_coverage.missing_dates(datasets)))
+        historical = [date for date in needs if date < target]
+        if historical:
+            span_days = (now_local().date() - dt.date.fromisoformat(historical[0])).days + 2
             result = market_daily.backfill_history(days=min(span_days, 400))
+        else:
+            result = market_daily.update_daily()
         with engine.begin() as conn:
             still_missing, _source = _missing_sessions_for_write(conn, local_max, target)
-        if still_missing:
+            datasets = market_coverage.check(conn, target)
+        if still_missing or not market_coverage.complete(datasets):
             return result, "partial"
-        if len(missing) <= 1:
+        if not historical:
             return result, _classify_update_daily(result, target)
-        return result, "completed"
+        return result, "partial" if result.get('errors') else "completed"
 
     return _record_attempt(trigger, target, fetch)
 
@@ -381,11 +383,11 @@ def attempt_refresh(trigger: str) -> dict:
         return {"attempted": False, "reason": "no_baseline_data", "target_date": target}
     with engine.begin() as conn:
         missing, source = _missing_sessions_for_write(conn, local_max, target)
-        last_run = _last_run_for_target(conn, target)
-    # A session can be "present" (>=1 row, so not a hole) but still short of the
-    # row-count floor from a prior partial fetch -- _missing_sessions_for_write
-    # only sees presence, so also honor the last recorded status for target.
-    still_incomplete = bool(last_run and last_run["status"] == "partial")
+    # Session presence alone is insufficient: verify usable per-market rows
+    # from actual datasets, independent of an older attempt's recorded status.
+    with engine.connect() as conn:
+        datasets = market_coverage.check(conn, target)
+    still_incomplete = not market_coverage.complete(datasets)
     if not missing and not still_incomplete:
         return {"attempted": False, "reason": "already_fresh", "target_date": target}
     with engine.begin() as conn:
@@ -412,7 +414,13 @@ def run_manual_update() -> dict:
 
         def fetch():
             result = market_daily.update_daily()
-            return result, (_classify_update_daily(result, target) if target else "failed")
+            if not target:
+                return result, 'failed'
+            with engine.connect() as conn:
+                missing, _ = _missing_sessions_for_write(conn, _local_max_quote_date(conn) or target, target)
+                datasets = market_coverage.check(conn, target)
+            state = _classify_update_daily(result, target)
+            return result, 'partial' if state == 'completed' and (missing or not market_coverage.complete(datasets)) else state
 
         if target:
             return _record_attempt("manual", target, fetch)
@@ -428,6 +436,23 @@ def run_manual_backfill(days: int) -> dict:
     from app.services import market_daily
     with refresh_lock():
         return market_daily.backfill_history(days)
+
+
+def run_manual_repair(days: int = 30) -> dict:
+    """Explicit bounded repair, logged separately from the latest-day button."""
+    from app.services import market_daily
+    with refresh_lock():
+        target = _resolve_target_trading_day()
+        if not target:
+            raise RuntimeError('Official trading date unavailable; no repair was started')
+
+        def fetch():
+            result = market_daily.backfill_history(days)
+            with engine.connect() as conn:
+                datasets = market_coverage.check(conn, target)
+                missing, _ = _missing_sessions_for_write(conn, _local_max_quote_date(conn) or target, target)
+            return result, 'completed' if not missing and market_coverage.complete(datasets) and not result.get('errors') else 'partial'
+        return _record_attempt('manual_repair', target, fetch)
 
 
 def scheduler_tick():
@@ -456,16 +481,40 @@ def startup_catchup_async() -> threading.Thread | None:
     return thread
 
 
+
+def _retry_state(freshness, current_status, exhausted, baseline):
+    """Truthful next check, no promise after a budget/window has ended."""
+    if current_status == 'running':
+        return {'state': 'running', 'next_check_at': None, 'requires_action': False}
+    if freshness == 'fresh':
+        enabled = config.AUTO_REFRESH_ENABLED and config.ENABLE_SCHEDULER
+        return {'state': 'idle' if enabled else 'disabled', 'next_check_at': None, 'requires_action': False}
+    if not baseline:
+        return {'state': 'no_baseline', 'next_check_at': None, 'requires_action': True}
+    if exhausted:
+        return {'state': 'exhausted', 'next_check_at': None, 'requires_action': True}
+    if not config.AUTO_REFRESH_ENABLED or not config.ENABLE_SCHEDULER:
+        return {'state': 'disabled', 'next_check_at': None, 'requires_action': True}
+    now = now_local()
+    interval = max(1, config.AUTO_REFRESH_POLL_INTERVAL_MINUTES)
+    first = int(config.AUTO_REFRESH_CHECK_TIME.split(':')[0])
+    last = min(23, first + max(1, config.AUTO_REFRESH_RETRY_WINDOW_MINUTES // 60 + 1))
+    candidate = now.replace(second=0, microsecond=0) + dt.timedelta(minutes=1)
+    end = now.replace(hour=last, minute=59, second=59)
+    while candidate <= end and candidate.date() == now.date():
+        if candidate.weekday() < 5 and first <= candidate.hour <= last and candidate.minute % interval == 0:
+            return {'state': 'scheduled', 'next_check_at': candidate.isoformat(timespec='seconds'), 'requires_action': False}
+        candidate += dt.timedelta(minutes=1)
+    return {'state': 'outside_window', 'next_check_at': None, 'requires_action': True}
+
+
 def status() -> dict:
     """Unified read-side freshness contract. Never a single boolean.
 
-    Stage L1.1: uses the process-local cached target (see _cached_target_trading_day)
-    so a dashboard polling every 20s does not turn into an external TWSE request
-    every 20s -- an actual refresh attempt (scheduler/startup/manual) always
-    re-resolves for real. Internal-hole detection here is LOCAL ONLY (trading_calendar,
-    no network): when the calendar has no coverage for the window, freshness falls
-    back to the plain MAX(date) comparison and 'internal_hole_check' is reported as
-    'unverified' rather than silently claiming a verified 'fresh'."""
+    Uses the TTL-cached official target; dataset checks are local only. Missing
+    calendar evidence returns unknown, never fresh. Partial attempt logs do not
+    override repaired actual evidence. Benchmark coverage remains separate.
+    """
     recover_interrupted()
     with engine.begin() as conn:
         dates = _dataset_dates(conn)
@@ -476,8 +525,10 @@ def status() -> dict:
                                 "ORDER BY started_at DESC LIMIT 1")
         target = _cached_target_trading_day()
         pending = _pending_missing_dates(conn, dates["quotes"], target)
-        last_for_target = _last_run_for_target(conn, target) if target else None
         has_hole, hole_source = _local_hole_check(conn, target) if target else (False, "none")
+        datasets = market_coverage.check(conn, target)
+        benchmark_target = query_one(conn, 'SELECT MAX(date) d FROM trading_calendar WHERE date<:d AND date<=:t',
+                                     d=now_local().date().isoformat(), t=target or '')['d']
         retry_count = 0
         latest_error = None
         exhausted = False
@@ -488,7 +539,6 @@ def status() -> dict:
                 latest_error = failed_rows[-1]["error"]
 
     local_max = dates["quotes"]
-    still_incomplete = bool(last_for_target and last_for_target["status"] == "partial") or has_hole
     if current_run:
         freshness = "partial" if local_max and target and local_max >= target else "stale"
         current_status = "running"
@@ -497,7 +547,9 @@ def status() -> dict:
     elif target is None:
         freshness, current_status = "unknown", "idle"
     elif local_max >= target:
-        freshness = "partial" if still_incomplete else "fresh"
+        unknown = any(row['state'] == 'unverified' for row in datasets.values())
+        missing_data = any(row['state'] == 'missing' for row in datasets.values())
+        freshness = 'partial' if has_hole or missing_data else 'unknown' if unknown else 'fresh'
         current_status = "idle"
     elif exhausted:
         freshness, current_status = "failed", "idle"
@@ -505,6 +557,8 @@ def status() -> dict:
         freshness, current_status = "stale", "idle"
 
     return {
+        "datasets": datasets,
+        "retry_state": _retry_state(freshness, current_status, exhausted, local_max),
         "now": now_local().isoformat(timespec="seconds"),
         "timezone": config.AUTO_REFRESH_TIMEZONE,
         "expected_trading_day": target,
@@ -542,6 +596,7 @@ def status() -> dict:
         "research_benchmark": {
             "benchmark_id": "TAIEX_TR",
             "latest_date": dates["research_benchmark"],
+            "expected_through": benchmark_target,
             "updated_by": "history_backfill.py (Strategy Lab historical backfill) only",
             "tracked_by_daily_auto_refresh": False,
         },
@@ -554,5 +609,6 @@ def public_status() -> dict:
     keys = ('freshness', 'expected_trading_day', 'latest_completed_quote_date',
             'latest_institutional_date', 'latest_valuation_date',
             'latest_market_summary_date', 'internal_hole_detected',
-            'internal_hole_check_source', 'current_status', 'research_benchmark')
-    return {key: full[key] for key in keys}
+            'internal_hole_check_source', 'current_status', 'research_benchmark',
+            'datasets', 'retry_state', 'pending_missing_dates', 'retry_budget_exhausted')
+    return {key: full[key] for key in keys if key in full}

@@ -86,7 +86,7 @@ class AccountsTests(unittest.TestCase):
         c = self.login()
         for path in ('/api/admin/status', '/api/admin/accounts', '/api/admin/backfill-for-backtest', '/docs', '/openapi.json'):
             self.assertEqual(c.get(path).status_code, 403, path)
-        for path in ('/api/admin/update-daily', '/api/admin/sync-stocks', '/api/admin/backfill', '/api/finance/refresh-etf'):
+        for path in ('/api/admin/update-daily', '/api/admin/sync-stocks', '/api/admin/backfill', '/api/admin/repair-light', '/api/admin/backfill-benchmark', '/api/finance/refresh-etf'):
             self.assertEqual(c.post(path, json={}).status_code, 403, path)
         self.assertEqual(c.get('/api/stocks/2330/deep?force=true').status_code, 403)
         self.assertEqual(c.post('/api/stocks/2330/deep').status_code, 403)

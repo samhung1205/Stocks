@@ -147,3 +147,10 @@ Modules: `app/identity.py`, `app/db/ownership.py`, `app/services/research_queue.
 - Account-mode top-level research uses one FIFO worker, one outstanding job per owner and a captured actor context. Walk Forward's internal optimization stays inside that worker. Restart recovery explicitly operates as the system and preserves the existing failed/resumable pinned-definition contract; disabled accounts cannot begin queued execution.
 - v7 adds ownership metadata, assigns existing roots to reserved owner id=1, and preserves original values and ids of research/version/result rows. Only mutable watchlist/scores are rebuilt to support owner-inclusive PKs. Bootstrap is local-operator-only after a consistent backup; the first invited member can never claim legacy research.
 - This adds access boundaries without changing PIT, execution/accounting, OOS evidence, candidate freeze, sleeve or planning-assumption semantics. Existing research contract strings remain valid; pure calculation modules acquire no account dependency. Owner checks cannot justify changing immutable payloads or recalculating stored results.
+
+
+## 18. Market freshness evidence and explicit benchmark repair (2026-10-30)
+
+`market_coverage.py` checks bounded light-layer sessions by market rather than accepting a newest-date sentinel. Calendar uncertainty is unverified; source publication lag retains its date. Historical calendar correction requires bracketed official monthly evidence plus valid empty daily-market observations, and returns auditable provenance. It does not add a synthetic return/cash day.
+
+Benchmark-only jobs reuse `history_backfill` and persist their requested range/checkpoints; daily refresh never calls them. Repairing shared source facts does not recompute or rewrite stored strategy/portfolio definitions, freezes, folds, fills or results. Research contract version strings remain unchanged because calculation/evidence semantics are unchanged. See architecture §8 for the current dataset floors, status API and repair boundaries.

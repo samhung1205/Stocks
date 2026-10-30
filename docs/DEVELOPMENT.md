@@ -142,8 +142,8 @@ export AUTO_REFRESH_ENABLED=1                    # 設為 0 關閉自動補齊�
 export AUTO_REFRESH_TIMEZONE=Asia/Taipei
 export AUTO_REFRESH_CHECK_TIME=15:05             # 盤後檢查設定；目前排程以小時範圍及 15 分鐘時鐘格點執行
 export AUTO_REFRESH_POLL_INTERVAL_MINUTES=15     # 檢查時間之後多久 poll 一次
-export AUTO_REFRESH_MAX_RETRIES=6                # 單一交易日最多重試幾次
-export AUTO_REFRESH_RETRY_WINDOW_MINUTES=180     # 超過這個時間窗就停止重試（保留 last error，見 freshness 狀態）
+export AUTO_REFRESH_MAX_RETRIES=16                # 單一交易日最多重試幾次
+export AUTO_REFRESH_RETRY_WINDOW_MINUTES=240     # 超過這個時間窗就停止重試（保留 last error，見 freshness 狀態）
 export AUTO_REFRESH_STATUS_CACHE_SECONDS=60      # Stage L1.1：/api/admin/data-freshness 快取官方交易日查詢結果的秒數，避免 dashboard 20 秒 poll 打上游
 ```
 
@@ -194,8 +194,8 @@ docs/         # 文件導覽 + 開發/架構/契約/狀態/部署參考；histor
 - Portfolio rebalance 只實作了「每月」一種頻率；`inverse_volatility` 配置法已實作但現有五套策略證據不足以產生真實配置；`risk_parity`/`minimum_variance`/`correlation_aware` 尚未實作（呼叫會明確 `NotImplementedError`）。
 - `max_sector_weight` 只做回報（reporting），不強制執行（`stocks.industry` 是現況快照，非時點正確的產業分類）。
 - 未解析（unresolved）的公司行動仍會讓 Walk Forward 訓練期的 severity 全面判定為 critical（上游資料問題，尚未解決）。
-- 每日自動補齊（Stage L1/L1.1）依實際缺失的交易 session 數決定：只缺一天用單日更新，缺兩天以上改用既有的多日回填（不是看日曆天數差）；全新安裝（`daily_quotes` 完全空）不會自動觸發大規模歷史回補，仍需手動執行 [使用手冊](../README.md) 的首次資料準備順序。沒有 `trading_calendar` 資料時，缺口中間剛好卡到國定假日可能多重試幾次才會 settle 成 `failed`（不會誤判 `fresh`）。詳見 [docs/history/stage-l1-daily-auto-refresh-report.md](history/stage-l1-daily-auto-refresh-report.md) 與 [docs/history/stage-l1-1-daily-refresh-hardening-report.md](history/stage-l1-1-daily-refresh-hardening-report.md)。
-- Railway 目前是共用帳密、共用資料的私人部署，不提供各使用者資料隔離；本機和 Railway 的 SQLite 不自動同步。部署驗證時曾有行情缺日、估值與研究 benchmark 延後，檢查最新資料時應以儀表板 freshness 與實際資料為準，勿沿用部署當日的快照。
+- 每日自動補齊只在缺漏限於最新交易日時使用單日更新；任何歷史 session 或資料集缺漏都使用既有的多日回填。全新安裝（`daily_quotes` 完全空）仍需手動完成 [首次資料準備](../README.md)。缺乏交易日曆證據時不得顯示 fresh；現行核對範圍、重試和修復邊界見 [架構 §8](ARCHITECTURE.md)。
+- Railway 為邀請制帳號與私人資料隔離的私人部署，市場資料共用；本機和 Railway 的 SQLite 不自動同步。行情、法人、估值與研究 benchmark 的日期可能不同，應以最新 freshness 與各資料集證據為準，勿沿用部署當日快照。
 - `listed_date`/`delisted_date` 等歷史事實仍可能是 NULL（來源未提供時保留未知，不猜測）；不是完整的財報/營收歷史修訂版本庫。
 
 ## 首次使用（Strategy Lab 資料基礎）
@@ -223,3 +223,12 @@ API（沒有常駐 worker；服務關閉後以同 ID 續跑）：
 - `POST /api/admin/backfill-for-backtest/{id}/pause`：目前單位提交後停止
 
 公布日資料契約（詳見 [docs/RESEARCH_CONTRACTS.md](RESEARCH_CONTRACTS.md)）：`actual` > `observed_finmind` > `assumed_deadline`，`available_fundamentals(..., as_of=...)` 只取 `publish_date < as_of`，`allow_assumed=True` 是明確的研究假設、不能宣稱嚴格無前視偏誤。`listed_date` 取交易所正式日期；`corporate_actions.ratio` 是參考價格比不是股數倍率，混合除權息無法拆分時保留 NULL 及原始 JSON。
+
+
+## 2026-10-30 更新狀態與小範圍修復
+
+頁首日期旁顯示精簡狀態；只有缺漏、失敗或無法確認才顯示提醒，詳細日期與管理工具在頁面下方。重試提示以 API 的 `retry_state` 為準，耗盡時不再宣稱稍後自動重試。
+
+管理員的「修復近期缺漏」呼叫 `POST /api/admin/repair-light`（固定 30 天、共用 writer lock、實際完成結果）；「補齊研究基準」呼叫 `POST /api/admin/backfill-benchmark`，建立 benchmark-only 工作，可透過既有歷史工作列表查看或續跑。未提供日期時，範圍由既有 benchmark 末日的次日起至昨天；完全沒有 benchmark baseline 時必須明確指定起日。新資料不重算舊研究。
+
+操作真實 DB 前仍須 backup API 備份；不要直接手動刪除交易日曆。自動歷史管線對孤立休市日會驗證兩市與官方月成交日期，並在更新紀錄保存證據。測試使用隔離 DB，`tests/test_market_refresh.py` 涵蓋休市證據、法人稀疏日、來源發布日期、重試提示及 benchmark-only 範圍。

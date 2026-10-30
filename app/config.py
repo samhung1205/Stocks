@@ -41,8 +41,8 @@ AUTO_REFRESH_CHECK_TIME = os.environ.get("AUTO_REFRESH_CHECK_TIME", "15:05")
 # 檢查時間之後，多久 poll 一次（分鐘）
 AUTO_REFRESH_POLL_INTERVAL_MINUTES = int(os.environ.get("AUTO_REFRESH_POLL_INTERVAL_MINUTES", "15"))
 # 單一交易日最多重試幾次、超過這個時間窗（分鐘，從第一次失敗/部分算起）就停止重試
-AUTO_REFRESH_MAX_RETRIES = int(os.environ.get("AUTO_REFRESH_MAX_RETRIES", "6"))
-AUTO_REFRESH_RETRY_WINDOW_MINUTES = int(os.environ.get("AUTO_REFRESH_RETRY_WINDOW_MINUTES", "180"))
+AUTO_REFRESH_MAX_RETRIES = int(os.environ.get("AUTO_REFRESH_MAX_RETRIES", "16"))
+AUTO_REFRESH_RETRY_WINDOW_MINUTES = int(os.environ.get("AUTO_REFRESH_RETRY_WINDOW_MINUTES", "240"))
 # Stage L1.1：GET /api/admin/data-freshness 讀取端點快取「官方最新交易日」查詢結果的秒數，
 # 避免 dashboard 每 20 秒 poll 就打一次 TWSE；實際補資料的 attempt（scheduler/startup/manual）
 # 一律重新查詢，不受這個快取影響。

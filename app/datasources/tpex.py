@@ -96,3 +96,15 @@ def institutional_by_date(yyyymmdd: str) -> list[dict]:
             "total_net": vals[21],
         })
     return out
+
+
+def empty_session_evidence(yyyymmdd: str) -> dict | None:
+    """A well-formed empty historical response, not a holiday assertion alone."""
+    data = get_json(f'{WWW}/afterTrading/dailyQuotes',
+                    params={'date': _iso_slash(yyyymmdd), 'type': 'EW', 'response': 'json'})
+    table = next((r for r in data.get('tables', []) if '上櫃股票' in (r.get('title') or '')), None)
+    if str(data.get('stat', '')).lower() != 'ok' or table is None or table.get('data') != []:
+        return None
+    if str(data.get('date', '')).replace('/', '').replace('-', '') != yyyymmdd:
+        return None
+    return {'source': f'{WWW}/afterTrading/dailyQuotes', 'date': yyyymmdd, 'rows': 0}

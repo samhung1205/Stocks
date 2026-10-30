@@ -10,18 +10,11 @@
 </head>
 <body>
 <main class="dashboard-main">
-  <header class="desk-page-head"><div><h1 id="market-heading" tabindex="-1">市場概況</h1><p class="muted">先確認資料日期，再看大盤與觀察名單。</p></div><div class="desk-asof">市場資料截至 <strong id="dashboard-asof">讀取中…</strong></div></header>
+  <header class="desk-page-head"><div><h1 id="market-heading" tabindex="-1">市場概況</h1><p class="muted">先確認資料日期，再看大盤與觀察名單。</p></div><div class="desk-asof">市場資料截至 <strong id="dashboard-asof">讀取中…</strong><a id="freshness-indicator" class="freshness-indicator" href="#data-status-details" aria-controls="data-status-details">正在確認資料狀態</a></div></header>
 
-  <section class="card" id="stale-banner" aria-label="資料更新狀態" hidden>
-    <div class="freshness-layout">
-      <div role="status" aria-live="polite" aria-atomic="true">
-        <strong id="stale-title"></strong>
-        <p id="stale-text" class="muted"></p>
-        <p id="stale-detail" hidden></p>
-      </div>
-      <button id="btn-stale-update" class="ghost" data-admin hidden>立即更新今日行情</button>
-    </div>
-    <p class="freshness-note muted">此處顯示資料庫的更新狀態；若下方內容載入失敗，請在該區重新載入。</p>
+  <section class="freshness-alert" id="stale-banner" aria-label="資料更新提醒" hidden>
+    <div role="status" aria-live="polite" aria-atomic="true"><strong id="stale-title"></strong><span id="stale-text"></span></div>
+    <a href="#data-status-details" class="freshness-details-link">查看明細</a>
   </section>
 
   <div id="market-error" class="dashboard-error" hidden>
@@ -67,6 +60,28 @@
     </div>
   </div>
 
+  <details id="data-status-details" class="data-status mt">
+    <summary><span>資料狀態與更新明細</span><span id="freshness-summary" class="muted">自動檢查</span></summary>
+    <div class="data-status-body">
+      <p class="muted">通常由系統自動檢查，是否啟用與下次時間見下方說明。資料來源發布時間不同，請以各項日期為準。</p>
+      <p id="stale-detail" class="freshness-retry" role="status"></p>
+      <div class="scroll-x" tabindex="0" role="region" aria-label="各資料集更新狀態">
+        <table class="data"><caption class="sr-only">資料日期、完整性與需要處理的缺漏</caption>
+          <thead><tr><th scope="col" class="l">資料</th><th scope="col" class="l">最新日期</th><th scope="col" class="l">狀態與說明</th></tr></thead>
+          <tbody id="dataset-status-rows"><tr><td colspan="3" class="l muted">正在確認…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="freshness-note muted">窄螢幕可左右捲動表格，查看完整說明。</p>
+      <div class="data-status-actions" data-admin hidden>
+        <button id="btn-stale-update" class="ghost" type="button">更新今日資料</button>
+        <button id="btn-repair-light" class="ghost" type="button">修復近期缺漏</button>
+        <button id="btn-benchmark" class="ghost" type="button">補齊研究基準</button>
+      </div>
+      <p id="repair-message" class="muted" role="status"></p>
+      <p class="freshness-note muted">研究用總報酬基準獨立維護；每日行情已更新，不代表研究基準也已更新。</p>
+    </div>
+  </details>
+
   <details id="dashboard-maintenance" class="dashboard-maintenance mt" data-admin hidden><summary>資料維護與回補工作 <span id="maintenance-status" class="muted">必要時展開</span></summary><div class="card">
     <h2>資料維護</h2>
     <div class="flex">
@@ -99,47 +114,15 @@
       首次使用順序：①同步股票清單 → ②更新今日行情 → ③回填歷史（背景執行約 10 分鐘，供均線/法人連買篩選）→ ④抓月營收（供營收類篩選）。
       平日盤後會自動低頻檢查並補齊（預設 15:05 起，逾時有限次數重試）；
       若電腦當時處於睡眠狀態排程被跳過，下次開啟伺服器會自動 catch-up 補齊，不需要手動逐日補。
-      不需要記時間，資料狀態一律顯示在上方（已同步／待更新／更新中／部分資料未完成），stale/partial/failed 不會被自動隱藏，需要時點「立即更新」手動補。
+      正常狀態顯示於頁首日期旁；缺漏或失敗保留精簡提醒，原因及手動工具在「資料狀態與更新明細」。
     </p>
   </div></details>
 </main>
 
 <script src="js/common.js"></script>
+<script src="js/data-status.js"></script>
 <script src="js/data-maintenance.js" defer></script>
 <script>
-/* Stage L1：資料 freshness 一律以伺服器 /api/admin/data-freshness 為準
-   （app/services/data_freshness.py，真的問過資料源才判斷，不用前端 weekday 猜測）。
-   stale/partial/failed 一律顯示，auto-refresh 不會把它們藏起來；running 時也照樣顯示。 */
-const FRESHNESS_LABEL = {
-  fresh: "已同步", partial: "部分資料未完成", stale: "待更新",
-  failed: "更新失敗", unknown: "無法確認（資料源異常）",
-};
-function renderFreshness(s) {
-  const banner = document.getElementById("stale-banner");
-  const running = s.current_status === "running";
-  const state = running ? "running" : s.freshness;
-  const label = running ? "更新中…" : (FRESHNESS_LABEL[s.freshness] || "無法確認");
-  banner.dataset.state = state;
-  document.getElementById("stale-title").textContent = `資料更新狀態：${label}`;
-  document.getElementById("stale-text").textContent =
-    `資料庫行情截至 ${s.latest_completed_quote_date || "尚無資料"} · 最新交易日 ${s.expected_trading_day || "無法確認"}`;
-  const details = [];
-  if (s.freshness === "partial") details.push("部分資料集尚未完整。" + (running ? "正在補齊，完成前請留意缺漏。" : "稍後會自動重試，完成前請留意缺漏。"));
-  if (s.freshness === "failed" && s.latest_error) details.push(`最後錯誤：${s.latest_error.slice(0, 160)}`);
-  if (s.pending_missing_dates?.length) {
-    details.push(`待補交易日：${s.pending_missing_dates.slice(0, 5).join("、")}` +
-      (s.pending_missing_dates.length > 5 ? ` 等 ${s.pending_missing_dates.length} 天` : "") +
-      (s.pending_missing_dates_source === "weekday_estimate" ? "（尚無研究用交易日曆，依平日粗估，可能含國定假日）" : ""));
-  }
-  const detail = document.getElementById("stale-detail");
-  detail.textContent = details.join(" ");
-  detail.hidden = !details.length;
-  banner.hidden = false;
-  const btn = document.getElementById("btn-stale-update");
-  btn.disabled = running;
-  btn.textContent = running ? "更新中…" : "立即更新今日行情";
-}
-
 async function loadFreshness() {
   try {
     const user = await window.accountReady;
@@ -147,13 +130,7 @@ async function loadFreshness() {
     renderFreshness(s);
     return s;
   } catch (err) {
-    const banner = document.getElementById("stale-banner");
-    banner.dataset.state = "unknown";
-    document.getElementById("stale-title").textContent = "資料更新狀態：無法讀取";
-    document.getElementById("stale-text").textContent = "暫時無法確認資料是否完整，稍後會自動重試。";
-    document.getElementById("stale-detail").textContent = err.message;
-    document.getElementById("stale-detail").hidden = false;
-    banner.hidden = false;
+    renderFreshnessError(err);
     return null;
   }
 }
@@ -162,11 +139,40 @@ document.getElementById("btn-stale-update").addEventListener("click", async e =>
   e.target.disabled = true; e.target.textContent = "更新中…";
   try {
     await api("/api/admin/update-daily", { method: "POST", body: {} });
-    toast("已更新今日行情");
+    toast("更新已執行，完整性請查看資料明細");
     loadDashboard(); loadStatus(); loadFreshness();
   } catch (err) { toastError("今日行情未更新：" + err.message); }
   e.target.disabled = false;
   loadFreshness();
+});
+
+document.querySelectorAll('a[href="#data-status-details"]').forEach(link => link.addEventListener('click', event => {
+  event.preventDefault();
+  const panel = document.getElementById('data-status-details');
+  panel.open = true;
+  panel.querySelector('summary').focus();
+  panel.scrollIntoView({block:'start'});
+}));
+document.getElementById('btn-repair-light').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const result = await api('/api/admin/repair-light', {method:'POST', body:{}});
+    document.getElementById('repair-message').textContent = result.status === 'completed'
+      ? '近期修復已完成並重新核對，詳細日期見上方明細。' : '近期修復已執行，仍有待補齊項目，請查看缺漏日期與來源狀態。';
+    loadFreshness();
+  } catch (error) { toastError(error.message); }
+  finally { button.disabled = false; }
+});
+document.getElementById('btn-benchmark').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const job = await api('/api/admin/backfill-benchmark', {method:'POST', body:{}});
+    document.getElementById('repair-message').textContent = `研究基準工作 ${job.id.slice(0,8)} 已建立，範圍 ${job.config.start} 至 ${job.config.end}。可在下方資料維護查看進度。`;
+    loadStatus(); loadFreshness();
+  } catch (error) { toastError(error.message); }
+  finally { button.disabled = false; }
 });
 
 // 更新中或資料落後時較常輪詢，已同步時降頻——不用使用者緊盯畫面。
@@ -342,7 +348,7 @@ function bindAdmin(id, path, body, done) {
 }
 bindAdmin("btn-sync", "/api/admin/sync-stocks", null,
   r => typeof r.synced === "number" ? `股票清單已同步（${fmt.int(r.synced)} 檔）` : "股票清單已同步");
-bindAdmin("btn-daily", "/api/admin/update-daily", null, () => "今日行情更新已執行，結果見上方資料狀態");
+bindAdmin("btn-daily", "/api/admin/update-daily", null, () => "今日行情更新已執行，結果見資料狀態明細");
 bindAdmin("btn-backfill", "/api/admin/backfill", { days: 180 }, () => "歷史回填已在背景執行");
 bindAdmin("btn-revenue", "/api/admin/fetch-revenue", { months: 13 },
   r => `近 ${r.months ?? 13} 個月營收已在背景抓取`);

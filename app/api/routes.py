@@ -343,6 +343,18 @@ def admin_data_freshness():
     return data_freshness.status()
 
 
+@router.post('/admin/repair-light')
+def admin_repair_light():
+    return _lab(data_freshness.run_manual_repair, 30)
+
+
+@router.post('/admin/backfill-benchmark')
+def admin_backfill_benchmark(payload: dict, background: BackgroundTasks):
+    job = _lab(history_backfill.create_benchmark_job, payload.get('start'), payload.get('end'))
+    background.add_task(history_backfill.run, job['id'], 20)
+    return job
+
+
 @router.post("/admin/fetch-revenue")
 def admin_fetch_revenue(payload: dict, background: BackgroundTasks):
     months = int(payload.get("months", 13))

@@ -158,81 +158,33 @@ portfolio_lab.py (DB-touching orchestration):
 
 The engine is generic over `component_keys: Sequence[str]` end to end — nothing under `app/services/portfolio/` branches on which strategies are in play. Stage H2 exposes this through `web/portfolio.html` using the existing API listed below. `scripts/h1_portfolio_smoke.py` remains a real-data validation script.
 
-## 8. Daily auto-refresh flow (Stage L1, hardened in L1.1)
+## 8. Daily refresh, evidence and repair (2026-10-30 source)
+
+`data_freshness.py` remains orchestration only. It writes attempt metadata but all light-market writes still go through `market_daily.update_daily()` or `market_daily.backfill_history()`, under the same `db-writer-<digest>.lock` as the historical task runner. Neither intraday quotes nor research benchmark writes enter this service.
 
 ```
-app.services.data_freshness (orchestration only -- never a second write path)
-  attempt_refresh(trigger)   shared entry point for startup catch-up and the scheduler tick:
-    -> twse.resolve_latest_trading_date()   ground truth "does the source have a newer
-                                             trading day than we do" -- never a weekday guess;
-                                             a holiday/not-yet-published afternoon just yields
-                                             no newer date, same gate market_daily.update_daily()
-                                             already used before Stage L1. ALWAYS re-resolved
-                                             here (uncached) -- only status()'s read path caches.
-    -> _missing_sessions_for_write()   the REAL missing-session count (Stage L1.1), not a raw
-                                       calendar-day gap: prefers trading_calendar (can safely
-                                       look back past local_max, real evidence); falls back to
-                                       a weekday-candidate list bounded to (local_max, target]
-                                       ONLY (never guesses backward past local_max -- that would
-                                       flag out-of-scope history as false-positive holes)
-    -> no missing sessions (and no prior 'partial' for target) / no baseline data (fresh
-       install) / retry budget exhausted / locked
-       -> return without writing anything (all no-ops are cheap and idempotent)
-    -> refresh_lock() == history_backfill.runner_lock() -- LITERALLY the same lock file
-       (Stage L1.1): both write daily_quotes/valuations, so a running 5-year historical
-       backfill and daily auto-refresh/manual-update can never race each other
-       -> <=1 missing session  -> market_daily.update_daily()        (unchanged pipeline call)
-       -> >1 missing sessions  -> market_daily.backfill_history(days) (unchanged pipeline call,
-                                 reused instead of only ever fetching "latest"; days span from
-                                 the EARLIEST missing session, not a calendar-day guess)
-    -> re-run _missing_sessions_for_write() AFTER the fetch -- MAX(date) reaching target is
-       never enough; only "no session-level hole remains" earns 'completed'. Still missing
-       (or, single-day path, under MIN_COMBINED_QUOTE_ROWS) -> 'partial', never silently 'fresh'
-    -> daily_refresh_runs row: running -> completed/partial/failed (append-only log, one row
-       per attempt). Watchlist deep-fetch fires only for trigger != 'manual' (scheduler/
-       startup_catchup), matching the exact pre-Stage-L1 scheduler behavior -- a manual click
-       never gained a new side effect it didn't have before; deep-fetch's own success/failure
-       never feeds back into the recorded status either way.
-  recover_interrupted()   a crash mid-attempt leaves a 'running' row stuck; probes the lock and
-                          marks it failed if nobody actually holds it (same class of fix as the
-                          four *_lab.py recover_interrupted() calls), called at startup and
-                          defensively inside status()
-  status()                read-side freshness contract: combines daily_refresh_runs with actual
-                          MAX(date) per dataset -- never a single boolean (fresh/partial/stale/
-                          failed/unknown + last success/attempt/current run/pending dates/error).
-                          Uses _cached_target_trading_day() (Stage L1.1, TTL =
-                          AUTO_REFRESH_STATUS_CACHE_SECONDS, default 60s) so a dashboard polling
-                          every 20s does not turn into a TWSE request every 20s; a real attempt
-                          (scheduler/startup/manual) always calls the uncached resolver. Internal-
-                          hole detection here is LOCAL ONLY (trading_calendar, no network); when
-                          the calendar has no coverage, 'internal_hole_check_source' reports
-                          'unverified' rather than silently claiming a verified 'fresh'. Also
-                          reports research_benchmark (see below) as a clearly separate block.
-
-app.scheduler.start()   weekday CronTrigger, minute=*/AUTO_REFRESH_POLL_INTERVAL_MINUTES, hour
-                        window derived from config (AUTO_REFRESH_CHECK_TIME .. + retry window) --
-                        bounds POLLING cadence only; never decides freshness (that stays
-                        data_freshness's real trading-day evidence)
-app.main.py lifespan    data_freshness.recover_interrupted() then startup_catchup_async() on a
-                        daemon thread, so an unreachable data source never blocks server startup
-
-web/index.html          GET /api/admin/data-freshness polled every 20s; the banner is never
-                        hidden for stale/partial/failed/running -- only 'fresh' + idle reads as
-                        "已同步". Manual "立即更新今日行情" still calls POST /api/admin/update-daily
-                        (data_freshness.run_manual_update(), same single-day market_daily.update_daily()
-                        pipeline, serialized against auto-refresh via the same lock) -- unchanged
-                        from pre-Stage-L1 behavior, just logged and lock-protected the same way.
+official latest trading date (TTL cached for status, freshly resolved for attempts)
+  -> local missing-session check + market_coverage.check()
+  -> no baseline / locked / exhausted / complete: explicit no-op
+  -> current-day-only missing data: market_daily.update_daily()
+  -> ANY older missing session or dataset: market_daily.backfill_history()
+  -> recheck actual sessions, per-market rows and pipeline outcome
+  -> daily_refresh_runs: completed / partial / failed
 ```
 
-Scope discipline: this is a daily/end-of-day light-layer refresher, not an intraday/live-quote service. `app/services/data_freshness.py` never imports `app.datasources.mis_snapshot`/`app.datasources.fugle`, and the only two functions it may call to actually write data are `market_daily.update_daily()` and `market_daily.backfill_history()` — seeing a Stage L2 (intraday) or later commit call anything else from this module to mark a date "completed" is a contract violation.
+`market_coverage.py` performs only local reads. Quotes and institutional data require usable rows in both markets (TWSE 500 / TPEx 400) for each calendar session in a bounded 10-day window. A single deep-fetch record cannot certify a market. Summary checks require observed index and turnover. Valuations check the latest published session: one actual trading session of publication lag is explicitly disclosed and never redated. These are evidence floors, not full-security-universe guarantees. No imported calendar evidence means unknown/unverified, not fresh. Old partial attempt rows cannot override subsequently repaired factual evidence.
 
-**Research benchmark is NOT covered by daily auto-refresh.** `benchmark_series` (`benchmark_id='TAIEX_TR'`, the Strategy Lab's point-in-time total-return series read by `app/services/strategy/panel.py`) is a separate table with a separate pipeline — the historical `history_backfill.py` pipeline writes it; `app/scheduler.py` does not currently schedule that pipeline periodically. `status()`'s `research_benchmark` block reports its own `latest_date` and `tracked_by_daily_auto_refresh: false` explicitly, so the global `freshness` field (light layer only: `daily_quotes`/`valuations`/`institutional_daily`/`market_summary`) is never misread as "the research benchmark is current too". A new Strategy Lab research run gets whatever `benchmark_series` coverage the last historical backfill left it — daily auto-refresh does not, and per Stage L1.1's decision, should not, extend that pipeline; see the L1.1 report for why extending it was rejected as out of minimal-fix scope.
+`backfill_history()` no longer skips a date solely because market_summary contains it. Historical quotes/institutional gaps are rechecked independently; latest valuations keep their official dates. An isolated past calendar date can be removed only after both daily markets are empty, TWSE's valid monthly trading dates bracket and exclude it, and TPEx returns a valid, matching-date empty stock table. Exceptions, thin/invalid monthly data, current-day publication gaps and month boundaries remain unresolved. The returned `calendar_reconciliation` evidence is stored in the logged attempt; no fake quote/cash row is inserted. This work occurs inside the explicit historical pipeline, never per-candidate network calls in status/tick fast paths.
 
-**Catch-up limitations:** the multi-day path has no per-day checkpoint; a truly empty `daily_quotes` dataset requires manual first-time setup. Without calendar coverage, the write path estimates forward weekdays only; a holiday can consume bounded retries and end as failed. Do not add per-candidate network probes to this fast path: the L1.1 report records the resulting hang.
+The default budget is 16 attempts / 240 minutes, with a process-local Taiwan-time scheduler and an explicit `retry_state` (`running`, `scheduled`, `exhausted`, `disabled`, `outside_window`, `no_baseline`, `idle`). `next_check_at` is present only when another check is actually scheduled within today's polling window. Startup catch-up remains asynchronous; an empty install is not automatically bootstrapped. Non-watchlist deep retention continues to use the existing SQLite busy-timeout safety net. Manual repair does not trigger watchlist deep-fetch.
 
-**Open freshness discrepancy (source audit 2026-10-13, not a runtime verification):** when calendar coverage is absent, `_local_hole_check()` returns `unverified`, and `status()` can still choose `fresh` from the maximum date and prior-attempt state. Its separate `internal_hole_check_source` discloses uncertainty; this is not proof of complete trading-session coverage and does not satisfy the root instruction's session-evidence requirement for `fresh`. Reproduce with a disposable fixture containing a later quote date, an earlier missing session and no calendar coverage, then decide API behavior explicitly; no behavior or contract change was made in this documentation update.
+Status API remains `/api/admin/data-freshness`; the member-safe `/api/market/freshness` now also includes `datasets`, `retry_state` and missing dates without runner logs/errors/config. Existing date/freshness keys remain. Admin-only `POST /api/admin/repair-light` performs a logged, locked 30-day repair and returns its actual result (409 if locked). The original latest-day button keeps `POST /api/admin/update-daily`.
 
-See `docs/history/stage-l1-daily-auto-refresh-report.md` (original design) and `docs/history/stage-l1-1-daily-refresh-hardening-report.md` (correctness hardening: session-accurate gap detection, shared cross-runner lock, benchmark-freshness truthfulness, status() upstream-traffic bound, scheduler-behavior parity) for the full retry/concurrency design and known limitations.
+The research benchmark stays separate. `history_backfill.create_benchmark_job()` and admin-only `POST /api/admin/backfill-benchmark` create only existing benchmark tasks, with a persisted explicit past range, no universe expansion and no private research replay. The normal historical runner provides checkpointing, source/calendar reconciliation and diagnostics. It is never called by daily auto-refresh. `research_benchmark` exposes its latest date, `expected_through` and `tracked_by_daily_auto_refresh: false`.
+
+The dashboard uses `web/js/data-status.js`: a compact link beside the as-of date, a concise visible reminder for every partial/stale/failed/unknown state, and expandable dataset/repair details below the charts. Healthy state hides the large reminder; problem states cannot be hidden by closing the details. Admin controls are at the bottom, and members see the same shared-data dates. Read errors remain visible and do not imply an empty market database.
+
+Historical design and regression background: [L1 report](history/stage-l1-daily-auto-refresh-report.md), [L1.1 hardening](history/stage-l1-1-daily-refresh-hardening-report.md). Their old MAX-date fallback, one-hole/latest-only strategy and six-retry defaults are superseded above. PIT, immutable definitions, OOS and cost contracts are unchanged.
 
 ## 9. Major tables (by layer)
 

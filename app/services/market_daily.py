@@ -5,7 +5,7 @@ import logging
 from app.db import engine, upsert_many, query_all, query_one
 from app.db.tables import (
     stocks, daily_quotes, valuations, institutional_daily, market_summary,
-    month_revenue,
+    month_revenue, trading_calendar,
 )
 from app.datasources import twse, tpex, finmind, mops
 
@@ -90,48 +90,104 @@ def update_daily() -> dict:
     return result
 
 
-def backfill_history(days: int = 180) -> dict:
-    """回填近 N 個日曆日的全市場日線＋法人（每交易日 4 個請求，禮貌限速）。
+def _closed_session_evidence(date):
+    """Only an isolated past date absent from positive monthly evidence qualifies.
 
-    已入庫的日期自動跳過，可分多次執行、可中斷續跑。
+    Both daily markets must be empty (checked by caller), the TPEx empty response
+    must be well formed, and TWSE monthly trading dates must bracket the date.
+    Network errors, thin responses, month boundaries and not-yet-published today
+    remain unverified. This runs under the historical writer lock, never status().
     """
-    with engine.begin() as conn:
-        known = _known_ids(conn)
-        have = {r["date"] for r in query_all(
-            conn, "SELECT DISTINCT date FROM market_summary")}
-    if not known:
-        sync_stock_list()
-        with engine.begin() as conn:
-            known = _known_ids(conn)
+    if date >= dt.date.today().isoformat():
+        return None
+    compact = date.replace('-', '')
+    monthly = twse.monthly_trading_dates(compact[:6])
+    days = monthly['dates']
+    if date in days or not (any(d < date for d in days) and any(d > date for d in days)):
+        return None
+    secondary = tpex.empty_session_evidence(compact)
+    if not secondary:
+        return None
+    return {'date': date, 'twse_monthly_source': monthly['source'],
+            'monthly_trading_dates': days, 'tpex_evidence': secondary,
+            'checked_at': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')}
 
+
+def backfill_history(days: int = 180) -> dict:
+    """Bounded EOD repair, including partial historical institutional sessions.
+
+    Caller holds the same writer lock as daily refresh/history_backfill. A date
+    in market_summary alone no longer skips incomplete quotes/institutional data.
+    Confirmed closed dates are reconciled with evidence returned to the attempt
+    log; never remove a date merely because an endpoint returned no rows.
+    Valuations retain their official published dates (latest endpoint only).
+    """
+    from app.services import market_coverage as coverage
+    if not 1 <= days <= 400:
+        raise ValueError('Backfill days must be between 1 and 400')
     today = dt.date.today()
-    done, skipped = 0, 0
+    start = (today - dt.timedelta(days=days-1)).isoformat()
+    end = today.isoformat()
+    with engine.connect() as conn:
+        known = _known_ids(conn)
+    if not known:
+        raise ValueError('Prepare the stock universe before historical repair')
+    with engine.connect() as conn:
+        quotes_have = coverage._counts(conn, 'daily_quotes', start, end, 'd.close IS NOT NULL')
+        inst_have = coverage._counts(conn, 'institutional_daily', start, end, 'd.total_net IS NOT NULL')
+        summaries = {r['date'] for r in query_all(conn, 'SELECT date FROM market_summary '
+            'WHERE date>=:a AND taiex_close IS NOT NULL AND total_amount IS NOT NULL', a=start)}
+        calendar = {r['date'] for r in query_all(conn, 'SELECT date FROM trading_calendar WHERE date>=:a', a=start)}
+    done, skipped, closures, errors = 0, 0, [], []
+    enough = lambda values: all(values.get(m, 0) >= floor for m, floor in coverage.MIN_MARKET_ROWS.items())
     for i in range(days):
-        d = today - dt.timedelta(days=i)
-        if d.weekday() >= 5:
+        date = today - dt.timedelta(days=i)
+        if date.weekday() >= 5:
             continue
-        iso = d.isoformat()
-        if iso in have:
+        iso, compact = date.isoformat(), date.strftime('%Y%m%d')
+        quote_missing = not enough(quotes_have.get(iso, {}))
+        inst_missing = not enough(inst_have.get(iso, {}))
+        if not quote_missing and not inst_missing and iso in summaries:
             skipped += 1
             continue
-        ymd = iso.replace("-", "")
         try:
-            quotes = [r for r in twse.daily_all_by_date(ymd) if r["stock_id"] in known]
-            if not quotes:          # 非交易日（假日）
-                continue
-            quotes += [r for r in tpex.daily_all_by_date(ymd) if r["stock_id"] in known]
-            inst = [r for r in twse.institutional_by_date(ymd) if r["stock_id"] in known]
-            inst += [r for r in tpex.institutional_by_date(ymd) if r["stock_id"] in known]
-            summ = twse.taiex_by_date(ymd)
-            with engine.begin() as conn:
-                upsert_many(conn, daily_quotes, quotes)
-                upsert_many(conn, institutional_daily, inst)
-                if summ:
-                    upsert_many(conn, market_summary, [summ])
+            if quote_missing:
+                tw = [r for r in twse.daily_all_by_date(compact) if r['stock_id'] in known]
+                tp = [r for r in tpex.daily_all_by_date(compact) if r['stock_id'] in known]
+                if not tw and not tp:
+                    # Only calendar-listed dates can be corrected; regular holidays
+                    # cost no extra evidence request and are never inserted as cash days.
+                    proof = _closed_session_evidence(iso) if iso in calendar else None
+                    if proof:
+                        with engine.begin() as conn:
+                            conn.execute(trading_calendar.delete().where(trading_calendar.c.date == iso))
+                        closures.append(proof)
+                    continue
+                with engine.begin() as conn:
+                    upsert_many(conn, daily_quotes, tw + tp)
+            if inst_missing:
+                inst = [r for r in twse.institutional_by_date(compact) if r['stock_id'] in known]
+                inst += [r for r in tpex.institutional_by_date(compact) if r['stock_id'] in known]
+                with engine.begin() as conn:
+                    upsert_many(conn, institutional_daily, inst)
+            if iso not in summaries:
+                summary = twse.taiex_by_date(compact)
+                if summary:
+                    summary.update(twse.institutional_market_by_date(compact) or {})
+                    with engine.begin() as conn:
+                        upsert_many(conn, market_summary, [summary])
             done += 1
-        except Exception as e:
-            log.warning("backfill %s failed: %s", iso, e)
-    return {"days_filled": done, "days_skipped": skipped}
+        except Exception as exc:
+            log.warning('backfill %s failed: %s', iso, exc)
+            errors.append({'date': iso, 'error': str(exc)[:250]})
+    try:
+        values = [r for r in twse.valuations_latest() + tpex.valuations_latest() if r['stock_id'] in known]
+        with engine.begin() as conn:
+            upsert_many(conn, valuations, values)
+    except Exception as exc:
+        errors.append({'dataset': 'valuations', 'error': str(exc)[:250]})
+    return {'days_filled': done, 'days_skipped': skipped,
+            'calendar_reconciliation': closures, 'errors': errors}
 
 
 def fetch_month_revenue_bulk(months_back: int = 13) -> dict:

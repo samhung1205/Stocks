@@ -421,3 +421,34 @@ def run(job_id, max_units=100, retry_failed=True, reset_stop=True):
             conn.execute(t.backfill_jobs.update().where(t.backfill_jobs.c.id == job_id)
                          .values(status=final, updated_at=now()))
     return status(job_id)
+
+
+def create_benchmark_job(start=None, end=None):
+    """Explicit benchmark-only repair using the existing bounded task runner.
+
+    No universe expansion, quote fetches or research replays. Never called by
+    daily auto-refresh; the requested range is persisted and returned for review.
+    """
+    end = end or (dt.date.today() - dt.timedelta(days=1)).isoformat()
+    if not isinstance(end, str) or (start is not None and not isinstance(start, str)):
+        raise ValueError('Benchmark dates must be ISO date strings')
+    if start is None:
+        with engine.connect() as conn:
+            baseline = query_one(conn, "SELECT MAX(date) d FROM benchmark_series WHERE benchmark_id='TAIEX_TR'")['d']
+        if not baseline:
+            raise ValueError('Specify a start date for the first research benchmark setup')
+        start = (dt.date.fromisoformat(baseline) + dt.timedelta(days=1)).isoformat()
+    lo, hi = dt.date.fromisoformat(start), dt.date.fromisoformat(end)
+    if lo > hi or hi >= dt.date.today() or (hi-lo).days > 366*10:
+        raise ValueError('Use a past benchmark range of at most 10 years')
+    jid = uuid.uuid4().hex
+    tasks = [_task(jid, 1, 'benchmark', start=max(start, f'{year}-01-01'),
+                   end=min(end, f'{year}-12-31')) for year in range(lo.year, hi.year+1)]
+    settings = {'start': start, 'end': end, 'datasets': ['benchmark'], 'stock_ids': None,
+                'min_avg_amount': config.BACKFILL_MIN_AVG_AMOUNT, 'min_observations': 120,
+                'universe_mode': 'benchmark_only'}
+    with engine.begin() as conn:
+        upsert_many(conn, t.backfill_jobs, [dict(id=jid, status='pending', config_json=json.dumps(settings),
+            created_at=now(), updated_at=now(), stop_requested=0)])
+        upsert_many(conn, t.backfill_tasks, tasks)
+    return status(jid)

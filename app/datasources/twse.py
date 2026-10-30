@@ -67,6 +67,22 @@ def valuations_latest() -> list[dict]:
     return out
 
 
+def monthly_trading_dates(yyyymm: str) -> dict:
+    """Positive monthly trading evidence, including raw source provenance.
+
+    Used only in an explicit historical pipeline, never in a scheduler fast path.
+    An empty/invalid monthly response raises; it cannot establish a holiday.
+    """
+    data = get_json(f'{RWD}/afterTrading/FMTQIK',
+                    params={'date': yyyymm + '01', 'response': 'json'}, cache_ttl=3600)
+    if data.get('stat') != 'OK' or not data.get('data'):
+        raise ValueError('Official monthly trading evidence unavailable')
+    dates = sorted({roc_to_iso(row[0]) for row in data['data'] if roc_to_iso(row[0])})
+    if not dates or any(not value.replace('-', '').startswith(yyyymm) for value in dates):
+        raise ValueError('Official monthly trading evidence has an unexpected date')
+    return {'dates': dates, 'source': f'{RWD}/afterTrading/FMTQIK', 'month': yyyymm}
+
+
 def daily_all_by_date(yyyymmdd: str) -> list[dict]:
     """指定日期全市場收盤（官網 MI_INDEX，歷史回填用）。非交易日回傳 []。"""
     data = get_json(f"{RWD}/afterTrading/MI_INDEX",
