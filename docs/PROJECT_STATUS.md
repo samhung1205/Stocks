@@ -98,3 +98,5 @@ Commit `62a8b92` is pushed and deployed on Railway (`1711d871`, SUCCESS). Normal
 ## 2026-10-31 bounded dashboard watchlist (deployed)
 
 Commit `573b36e` is pushed and deployed (`266714ab`, SUCCESS). The desktop preview stays aligned with the market chart, shows at most four stocks per page and filters by existing decision stage/industry. Mobile stacks the panels and retains pagination. A synthetic 600-stock list does not increase the desktop card height. All 39 browser checks passed; production HTTPS assets match the commit and original-owner login/watchlist/logout passed. No backend, API, schema or private-data write was introduced. See [verification](history/dashboard-watch-preview-2026-10-31.md); this UI release did not recheck market freshness.
+
+Same-day follow-up `3854a27` is deployed (`a8adbd97`, SUCCESS): full-watchlist alert prose is left aligned with consistent list spacing, top-aligned rows and readable narrow-screen scrolling. Fifteen browser assertions and production asset/auth checks passed; alert contents and calculations are unchanged.

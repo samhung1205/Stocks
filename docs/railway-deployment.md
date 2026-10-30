@@ -89,6 +89,7 @@
 - 部署前四類研究與歷史回補均無 queued/running。沿用既有 service、volume、單 worker/replica 及環境設定；此批沒有 Python、API 或 schema 變更，也沒有操作資料修復。
 - 正式 HTTPS：health 200/ok；匿名 watchlist 401；原帳密登入與 admin 身分 200；首頁、CSS、新速覽 JS 回應指紋符合提交；名單讀取 200；登出後 me 401。未輸出私人名單內容或擷取正式私人畫面。
 - 39 項本機合成資料瀏覽器檢查、600 檔壓力版面及四種寬度驗證見 [交付紀錄](history/dashboard-watch-preview-2026-10-31.md)。這次未重新核對市場資料完整性，勿把前端部署成功當成新的 freshness 證據。
+- 同日警訊敘述排版跟進：`3854a27` 已推送，部署 `a8adbd97-f0fe-467d-b1df-5cf7ac7eb9b3` 為 SUCCESS。警訊文字靠左、同列頂端對齊、列表行距／縮排一致，手機警訊不被固定股票欄遮住。15 項本機瀏覽器確認通過；正式 HTML/CSS 指紋、原帳密登入、名單讀取與登出驗證通過。僅 HTML/CSS，沒有變更警訊計算或私人資料。
 
 ## 下一步
 
