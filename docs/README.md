@@ -29,6 +29,7 @@
 - [第二批 B：個股錯誤與等價證據](history/ui-batch-b-stock-evidence-2026-10-23.md)：恢復入口、六個面向的文字／數值替代、鍵盤頁籤及稀疏 OHLC 處理與驗證。
 - [第三批 C 與剩餘項目](history/ui-batch-c-remaining-2026-10-23.md)：草稿保護、研究摘要與來源、分組篩選、觀察名單、規劃導覽及帳號操作的完成與驗證。
 - [每日資料核對與更新介面](history/freshness-repair-ui-2026-10-30.md)：資料集缺漏、休市日證據、真實重試狀態、精簡提醒及正式修復／上線驗證。
+- [首頁觀察名單速覽](history/dashboard-watch-preview-2026-10-31.md)：桌面等高、分頁、決策階段／產業篩選及合成資料與正式部署驗證。
 - `final-design-direction.md`、`k1a-palette-comparison.md`：設計探索與比較；目前 UI 採 K2 完成的樣式，這些檔案不代表待實作規格。
 
 歷史紀錄保留供查核研究決策及回歸原因，不作為「目前狀態」的獨立真相來源。`assets/k1a/` 是本機歷史截圖，因可能含財務畫面而不納入 GitHub；`output/` 與 `.playwright-cli/` 是本機產物，不屬於版控文件，歷史報告若指向它們可能無法在新 checkout 顯示。
