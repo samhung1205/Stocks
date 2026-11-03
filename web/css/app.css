@@ -16,13 +16,16 @@
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 [data-admin][hidden] { display: none !important; }
-.topbar .account-nav { display: inline-flex; align-items: center; justify-content: center;
-  flex: 0 0 44px; width: 44px; height: 44px; margin-left: 8px;
-  color: var(--muted); border-radius: var(--r-md); }
-.topbar .account-nav:hover, .topbar .account-nav[aria-current="page"] {
-  color: var(--action); background: var(--inset); text-decoration: none; }
-.topbar .account-nav:active { color: var(--action-hover); }
-.topbar .account-nav svg { display: block; }
+/* Account menu: same open/close behaviour as the work groups, anchored to the right edge. */
+.topbar .account-menu { position: relative; flex: 0 0 auto; }
+nav.topbar .account-trigger { min-height: 44px; padding: 6px 8px; gap: 4px; }
+.account-trigger svg:first-child { display: block; }
+.topbar .account-items { left: auto; right: 0; min-width: 220px; }
+.account-menu-who { display: grid; gap: 2px; margin: 0 0 6px; padding: 8px 10px 10px; border-bottom: 1px solid var(--rule); }
+.account-menu-who strong { font-size: .9rem; color: var(--text-primary); }
+.account-menu-who span { font-size: .78rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+nav.topbar button.navlink { display: block; width: 100%; min-height: 0; border: 0; background: none; text-align: left; font-weight: 400; line-height: inherit; }
+nav.topbar button.navlink:hover { background: var(--inset); color: var(--text-primary); }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
   font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
@@ -916,29 +919,25 @@ nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inse
 .desk-page-head p { margin: 0; }
 .desk-kicker { color: var(--evidence-primary); font-size: .8rem; font-weight: 700; letter-spacing: .04em; }
 .desk-asof { display: grid; gap: 3px; min-width: 150px; font-size: .82rem; color: var(--text-secondary); text-align: right; }
-.desk-asof strong { color: var(--text-primary); font-size: 1rem; font-variant-numeric: tabular-nums; }
+.desk-asof strong { color: var(--text-primary); font-size: 1.15rem; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.asof-lag { color: var(--status-caution); font-weight: 600; }
 .dashboard-context { background: var(--paper); border-top: 2px solid var(--evidence-primary); border-bottom: 1px solid var(--rule); border-radius: 0; }
 .dashboard-context .grid { gap: 0; }
 .dashboard-context .card { border: 0; border-right: 1px solid var(--rule); border-radius: 0; padding: 20px; }
 .dashboard-context .card:last-child { border-right: 0; }
 .dashboard-context .card:first-child .v { font-size: 2rem; }
-.dashboard-main > .grid.cols-2 { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: stretch; }
-.dashboard-main > .grid.cols-2 > .card { padding: 22px; }
-.dashboard-watch-panel { display: flex; flex-direction: column; contain: size; min-height: 32rem; }
+/* Reading order: market strip, then holdings and alerts at full width, then the index chart as context. */
+.dashboard-main > .dashboard-panel { padding: 22px; margin-top: 20px; }
 .watch-preview-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .watch-preview-filters label { flex: 1 1 140px; min-width: 0; }
 .watch-preview-filters select { display: block; width: 100%; margin-top: 6px; }
-.watch-preview-region { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.watch-preview-region { overflow-x: auto; }
 .watch-preview-region:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .watch-preview-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
   gap: 12px; border-top: 1px solid var(--rule); padding-top: 12px; margin-top: 12px; font-size: .8rem; }
 .watch-preview-pagination > div { display: flex; gap: 8px; }
 .watch-quote-date { display: block; font-size: .72rem; white-space: nowrap; margin-top: 3px; }
 .dashboard-watch-panel [hidden] { display: none; }
-@media (max-width: 1100px) {
-  .dashboard-watch-panel { contain: none; min-height: 0; }
-  .watch-preview-region { flex: none; max-height: 28rem; }
-}
 .dashboard-panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
 .dashboard-panel-head h2 { margin: 0; }
 .dashboard-panel-head a { font-size: .88rem; white-space: nowrap; }
@@ -957,16 +956,9 @@ nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inse
 .dashboard-main :where(button,summary,a) { scroll-margin-top: 100px; }
 .dashboard-main :where(h1,h2)[tabindex="-1"]:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 #watch-table th, #watch-table td { padding: 10px 7px; }
-#watch-table .watch-stock-name { display: block; white-space: normal; overflow-wrap: anywhere; min-width: 4em; max-width: 8em; color: var(--text-primary); }
+#watch-table .watch-stock-name { display: block; white-space: normal; overflow-wrap: anywhere; min-width: 4em; max-width: 10em; color: var(--text-primary); }
 .watch-stock-id { font-variant-numeric: tabular-nums; }
 .watch-mobile-note { display: none; font-size: .82rem; margin: 12px 0 0; }
-@media (min-width: 901px) and (max-width: 1100px) {
-  .dashboard-main > .grid.cols-2 { grid-template-columns: 1fr; }
-}
-.dashboard-maintenance { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 10px; }
-.dashboard-maintenance > summary { cursor: pointer; color: var(--text-secondary); font-size: .92rem; font-weight: 600; padding: 10px 0; }
-.dashboard-maintenance > summary span { font-weight: 400; margin-left: 10px; }
-.dashboard-maintenance > .card { margin-top: 8px; }
 .stock-main .stock-layout { grid-template-columns: 1fr; gap: 32px; }
 .stock-main .stock-research { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; align-items: start; }
 .stock-main .stock-research > .card { margin-top: 0; }
@@ -1049,7 +1041,7 @@ nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inse
   .journal-review .journal-section-head > div { width: 100%; }
 }
 @media (max-width: 900px) {
-  .dashboard-main > .grid.cols-2, .journal-main .journal-layout { grid-template-columns: 1fr; }
+  .journal-main .journal-layout { grid-template-columns: 1fr; }
   .dashboard-context .grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .dashboard-context .card:nth-child(2) { border-right: 0; }
   .dashboard-context .card:nth-child(-n+2) { border-bottom: 1px solid var(--rule); }
@@ -1061,7 +1053,8 @@ nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inse
   .dashboard-context .card { padding: 14px; }
   .dashboard-context .card .v, .dashboard-context .card:first-child .v { font-size: 1.4rem; overflow-wrap: anywhere; }
   .dashboard-context .card .muted { font-size: .82rem; overflow-wrap: anywhere; }
-  .dashboard-main > .grid.cols-2 > .card { padding: 16px; }
+  .dashboard-main > .dashboard-panel { padding: 16px; }
+  #watch-table .watch-alert-cell { display: none; }
   #watch-table th, #watch-table td { padding: 10px 4px; }
   #watch-table .watch-detail { display: none; }
   .watch-mobile-note { display: block; }
@@ -1155,7 +1148,7 @@ nav.topbar a.navlink.active, nav.topbar .navlink.active { background: var(--inse
 .data-status td:last-child { white-space: normal; max-width: 48ch; }
 .dataset-state { font-weight: 600; }
 .dataset-state[data-state="missing"], .dataset-state[data-state="unverified"] { color: var(--status-caution); }
-.data-status-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.data-status-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin-top: 16px; }
 .freshness-note { font-size: .8rem; margin: 10px 0 0; }
 @media (max-width: 600px) {
   #stale-banner { flex-wrap: wrap; gap: 6px; }
@@ -1356,3 +1349,81 @@ nav.topbar .searchbox input:focus-visible, .search-results a:focus-visible, butt
 @media (max-width: 600px) { .portfolio-result .section-head { flex-direction: column; gap: 12px; } }
 /* Anchor visually hidden names inside the table's own scrolling container. */
 .watch-alerts summary { position: relative; }
+
+/* Stale data stays the same size; only colour and one plain note change. */
+.dashboard-context[data-stale="true"] { border-top-color: var(--status-caution); }
+.dashboard-context[data-stale="true"] .card .v { color: var(--text-secondary); }
+.context-note { margin: 0; padding: 10px 20px; border-bottom: 1px solid var(--rule); color: var(--status-caution); font-size: .84rem; font-weight: 600; }
+.context-note[hidden] { display: none; }
+#stale-retry { color: var(--text-secondary); }
+.freshness-alert-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.freshness-alert-actions button { white-space: nowrap; }
+.data-status-actions + .freshness-note { color: var(--status-caution); }
+
+/* Watchlist preview: stage tally, holdings first, first alert written out under its stock. */
+.watch-tally { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: -6px 0 14px; font-size: .84rem; color: var(--text-secondary); }
+.watch-tally strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.watch-tally-alerts { margin-left: auto; }
+.watch-tally-alerts[data-flagged="true"], .watch-tally-alerts[data-flagged="true"] strong { color: var(--status-caution); }
+#watch-table tbody.watch-item { border-bottom: 1px solid var(--rule); }
+#watch-table tbody.watch-item tr td { border-bottom: 0; }
+#watch-table tbody.watch-item:hover td { background: var(--inset); }
+#watch-table .badge.tier[data-tier="holding"] { color: var(--text-primary); border-color: var(--text-secondary); font-weight: 600; }
+/* Wide screens give the first alert its own column; phones move it to a line under the stock. */
+#watch-table .watch-alert-row { display: none; }
+#watch-table .watch-alert-row td { padding-top: 0; padding-bottom: 12px; white-space: normal; }
+#watch-table .watch-alert-cell { width: 46%; min-width: 18rem; padding-left: 28px; text-align: left; white-space: normal; }
+@media (max-width: 600px) { #watch-table .watch-alert-row { display: table-row; } }
+.watch-alert { display: flex; align-items: baseline; gap: 8px; color: var(--text-primary); font-size: .84rem; line-height: 1.5; }
+.watch-alert:hover { text-decoration: none; }
+.watch-alert:hover .watch-alert-text { text-decoration: underline; text-underline-offset: 3px; }
+.watch-alert .badge { flex: 0 0 auto; }
+.watch-alert-text { min-width: 0; overflow-wrap: anywhere; }
+
+/* Maintenance page: same two-column settings rhythm as 帳號與存取. */
+.maintenance-main { max-width: 1120px; }
+.maintenance-main .desk-page-head { margin-bottom: 0; }
+.maintenance-denied { padding: 24px 0; }
+.maintenance-section { display: grid; grid-template-columns: minmax(180px, 250px) minmax(0, 1fr); gap: 16px 56px; padding: 32px 0; border-bottom: 1px solid var(--rule); scroll-margin-top: 90px; }
+.maintenance-section:last-child { border-bottom: 0; }
+.maintenance-section:focus { outline: none; }
+.maintenance-section-head h2 { margin: 0 0 8px; font-size: 1.08rem; }
+.maintenance-section-head p { margin: 0; font-size: .86rem; line-height: 1.6; }
+.maintenance-section-body { min-width: 0; }
+.maintenance-section-body #stale-banner { margin: 0 0 16px; }
+/* Tables sit on paper so the sticky first column does not read as a separate strip. */
+.maintenance-section-body > .scroll-x, .data-status-body > .scroll-x { background: var(--paper); border: 1px solid var(--rule); border-radius: var(--r-sm); }
+.maintenance-table { min-width: 540px; }
+.maintenance-table td:last-child { white-space: normal; max-width: 52ch; }
+.maintenance-actions, .maintenance-steps { list-style: none; margin: 20px 0 0; padding: 0; border-top: 1px solid var(--rule); }
+.maintenance-actions li { display: grid; grid-template-columns: 11.5rem minmax(0, 1fr); align-items: center; gap: 8px 20px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.maintenance-actions li span, .maintenance-steps li div span { color: var(--text-secondary); font-size: .86rem; }
+.maintenance-actions button { width: 100%; }
+.maintenance-message { margin: 12px 0 0; font-size: .86rem; color: var(--text-secondary); }
+.maintenance-message:empty { display: none; }
+.maintenance-db { margin: 0 0 16px; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.maintenance-steps { counter-reset: step; margin-top: 0; }
+.maintenance-steps li { counter-increment: step; display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.maintenance-steps li::before { content: counter(step); display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border: 1px solid var(--rule); border-radius: 50%; font-size: .8rem; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.maintenance-steps li div { display: grid; gap: 2px; }
+.maintenance-actions li:last-child, .maintenance-steps li:last-child { border-bottom: 0; }
+.maintenance-steps li strong { font-size: .92rem; }
+.maintenance-steps button { min-width: 10.5rem; }
+.maintenance-note { margin: 16px 0 0; max-width: 68ch; font-size: .84rem; line-height: 1.65; color: var(--text-secondary); }
+.maintenance-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; }
+.maintenance-fields label { margin: 0; }
+.maintenance-fields input { display: block; width: 100%; margin-top: 6px; }
+.maintenance-job-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 16px; }
+.maintenance-job-actions label { margin: 0; }
+.maintenance-job-actions select { display: block; margin-top: 6px; min-width: 14rem; }
+.maintenance-progress { margin: 16px 0 0; padding: 12px 14px; background: var(--inset); border: 1px solid var(--rule); border-radius: var(--r-sm); font-size: .8rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
+@media (max-width: 760px) {
+  .maintenance-section { grid-template-columns: 1fr; gap: 16px; padding: 24px 0; }
+  .maintenance-actions li { grid-template-columns: 1fr; }
+  .maintenance-actions button { width: auto; justify-self: start; }
+  .maintenance-steps li { grid-template-columns: 2rem minmax(0, 1fr); }
+  .maintenance-steps li::before { align-self: start; }
+  .maintenance-steps li button { grid-column: 2; justify-self: start; }
+  .maintenance-fields { grid-template-columns: 1fr; }
+  .watch-tally-alerts { margin-left: 0; width: 100%; }
+}

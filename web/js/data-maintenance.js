@@ -1,15 +1,15 @@
-/* Stage A+ maintenance controls; no strategy builder or backtest UI. */
+/* Stage A+ maintenance controls on maintenance.html; no strategy builder or backtest UI. */
 (async () => {
   const user = await window.accountReady;
   if (user.role !== 'admin') return;
   const el = id => document.getElementById(id);
   const root = '/api/admin/backfill-for-backtest';
-  let busy = false;
+  let busy = false, lastStatus = null;
   const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const end = new Date(); end.setDate(end.getDate() - 1);
   const start = new Date(end); start.setFullYear(start.getFullYear() - 5);
   el('history-start').value = iso(start); el('history-end').value = iso(end);
-  const labels = {queued:'已排入執行', pending:'待執行', running:'執行中', paused:'已暫停', interrupted:'已中斷，可續跑',
+  const labels = {queued:'已排入執行', pending:'待執行', running:'執行中', done:'已完成', partial:'部分完成', paused:'已暫停', interrupted:'已中斷，可續跑',
     failed:'失敗，可重試', completed:'工作完成', completed_with_gaps:'工作完成，部分來源無資料'};
   async function refresh(preferred) {
     const selected = preferred || el('history-jobs').value;
@@ -21,9 +21,10 @@
     }));
     if (state.jobs.some(j => j.id === selected)) el('history-jobs').value = selected;
     const id = el('history-jobs').value;
-    if (!id) { el('history-progress').textContent = '尚無回補工作'; return; }
+    if (!id) { lastStatus = null; el('history-progress').textContent = '尚無回補工作'; return; }
     const job = await api(`${root}/${id}`);
-    const progress = job.progress.map(p => `${p.status}: ${p.units} 單位 / ${p.rows_written || 0} 筆`).join('\n');
+    lastStatus = job.status;
+    const progress = job.progress.map(p => `${labels[p.status] || p.status}：${p.units} 單位／${p.rows_written || 0} 筆`).join('\n');
     const diagnostics = (job.diagnostics || []).map(e => `${e.task_key} [${e.status}]: ${e.error}`).join('\n');
     el('history-progress').textContent = `工作 ${id}\n${labels[job.status] || job.status} · ${job.config.start} ～ ${job.config.end}\n門檻 NT$${job.config.min_avg_amount.toLocaleString()}；至少 ${job.config.min_observations} 個觀察日\n${progress}\n${diagnostics}\n${job.empty_units.length ? '無資料單位（不代表覆蓋完整）：\n' + job.empty_units.map(e => e.task_key).join('\n') : ''}`;
   }
@@ -51,5 +52,6 @@
   el('history-jobs').onchange = () => act(() => refresh());
   api(root).then(s => {el('history-threshold').value = s.default_min_avg_amount;}).catch(() => {});
   act(() => refresh());
-  setInterval(() => { if (!document.hidden && el('history-progress').closest('details').open) act(() => refresh()); }, 5000);
+  // Follow progress only while the selected job is active.
+  setInterval(() => { if (!document.hidden && ['queued', 'pending', 'running'].includes(lastStatus)) act(() => refresh()); }, 5000);
 })();

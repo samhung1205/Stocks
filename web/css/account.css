@@ -1,3 +1,4 @@
+/* Login */
 .login-desk { max-width: 1120px; margin: 0 auto; min-height: 100svh; padding: 64px 32px; display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 80px; }
 .account-brand { color: var(--text); font-size: 19px; font-weight: 700; }
 .login-intro h1 { font-size: clamp(36px, 4vw, 54px); line-height: 1.28; letter-spacing: -.025em; margin: 40px 0 24px; }
@@ -7,26 +8,72 @@
 .account-boundaries dt { font-weight: 600; margin-bottom: 4px; }.account-boundaries dd { margin: 0; color: var(--muted); }
 .account-footnote { color: var(--muted); font-size: 14px; }
 .login-form-section { background: var(--paper); padding: 36px; border: 1px solid var(--border); border-radius: var(--r-lg); }
-.login-form-section h2 { margin-top: 0; font-size: 25px; }.login-form-section input, .account-password-form input { width: 100%; }
-.login-form-section button[type=submit], .account-password-form button { margin-top: 24px; width: 100%; min-height: 44px; }
-.account-main { max-width: 1120px; margin: 0 auto; padding: 32px; }.account-identity { padding: 16px 0; border-bottom: 1px solid var(--border); }
-.account-section { padding: 28px 0; border-bottom: 1px solid var(--border); }.account-section h2 { margin: 0 0 8px; }.account-section > div > p { max-width: 70ch; }
-.account-password-form { max-width: 420px; margin-top: 24px; }.account-invite-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: start; gap: 16px; margin: 24px 0; }
-.account-invite-form input { width: 100%; }.account-invite-form button { margin-top: 31px; min-height: 44px; }
-.account-main label, .login-form-section label { display: block; margin: 18px 0 6px; }.account-invite-form label { margin-top: 0; }
-.account-message { min-height: 26px; overflow-wrap: anywhere; }.account-message[data-error=true] { color: var(--danger); font-weight: 600; }
-.account-table-scroll { overflow-x: auto; }.account-table-scroll table { width: 100%; font-variant-numeric: tabular-nums; }.account-table-scroll td { vertical-align: top; }.account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.account-actions button { min-height: 40px; }.issued-link { padding: 20px; margin: 20px 0; background: var(--inset); border: 1px solid var(--border); }.issued-link input { width: 100%; margin-bottom: 12px; }
-.account-main [hidden], .login-desk [hidden] { display: none; }
-.account-nav { margin-left: 8px; color: var(--muted); white-space: nowrap; }
-@media (max-width: 760px) { .login-desk { display: block; padding: 28px 20px; }.login-intro h1 { font-size: 36px; margin-top: 24px; }.account-boundaries { margin: 24px 0; }.login-form-section { margin-top: 28px; padding: 24px; }.account-main { padding: 24px 16px; }.account-invite-form { grid-template-columns: 1fr; }.account-invite-form button { margin-top: 0; }.account-actions { min-width: 130px; }.account-main .desk-page-head { align-items: start; }.account-nav { font-size: 13px; } }
+.login-form-section h2 { margin-top: 0; font-size: 25px; }.login-form-section input { width: 100%; }
+.login-form-section button[type=submit] { margin-top: 24px; width: 100%; min-height: 44px; }
+.login-form-section label { display: block; margin: 18px 0 6px; }
+#token-recovery { border-top: 2px solid var(--status-caution); margin-top: 24px; padding-top: 12px; }
 
-/* Keep the administrator's members workspace first; compact personal credentials below. */
-.account-password-section { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-.account-password-section .account-password-form { margin-top: 0; width: 100%; }
-.account-password-form > label:first-child { margin-top: 0; }
+/* Shared by login and account forms */
+.account-message { margin: 0; overflow-wrap: anywhere; }
+.account-message:not(:empty) { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.account-message[data-error=true] { color: var(--danger); font-weight: 600; }
 .password-control { display: flex; gap: 8px; align-items: stretch; }
 .password-control input { min-width: 0; flex: 1; }
-.password-control button, .account-password-form .password-control button { flex: 0 0 auto; width: auto; min-height: 44px; margin: 0; }
-#token-recovery { border-top: 2px solid var(--status-caution); margin-top: 24px; padding-top: 12px; }
-@media (max-width: 760px) { .account-password-section { grid-template-columns: 1fr; gap: 24px; } }
+.password-control button { flex: 0 0 auto; width: auto; min-height: 44px; margin: 0; }
+.account-main [hidden], .login-desk [hidden] { display: none; }
+
+/* Account settings: every section shares one label column and one content column,
+   so headings, fields, the table and footnotes start on the same vertical lines. */
+.account-main { max-width: 1040px; margin: 0 auto; padding: 32px; }
+.account-main .desk-page-head { margin-bottom: 0; }
+.account-section { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px 56px; padding: 32px 0; border-bottom: 1px solid var(--rule); }
+.account-section:last-child { border-bottom: 0; }
+.account-section-head h2 { margin: 0 0 8px; font-size: 1.08rem; }
+.account-section-head p { margin: 0; font-size: .86rem; line-height: 1.6; }
+.account-section-head p + p { margin-top: 10px; }
+.account-section-body { min-width: 0; }
+.account-section-body h3 { margin: 0 0 14px; font-size: .95rem; }
+.account-section-body h3:not(:first-child) { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+
+.account-profile { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: 0 48px; margin: 0; }
+.account-profile dt { color: var(--text-secondary); font-size: .8rem; margin-bottom: 4px; }
+.account-profile dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.account-profile-actions { margin-top: 20px; }
+
+.account-field label { display: block; margin: 0 0 6px; font-size: .88rem; font-weight: 600; color: var(--text-primary); }
+.account-field input { width: 100%; }
+.account-field-help { margin: 6px 0 0; font-size: .8rem; line-height: 1.55; color: var(--text-secondary); }
+.account-password-form { display: grid; gap: 18px; max-width: 440px; }
+.account-invite-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; align-items: start; }
+.account-form-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+.account-form-actions button, .account-password-form > button { min-height: 44px; justify-self: start; }
+
+.issued-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: end; padding: 16px; margin-top: 20px; background: var(--inset); border: 1px solid var(--rule); border-radius: var(--r-sm); }
+.issued-link label { grid-column: 1 / -1; margin: 0; font-size: .86rem; font-weight: 600; }
+.issued-link input { width: 100%; font-variant-numeric: tabular-nums; }
+.issued-link button { min-height: 40px; }
+.issued-link p { grid-column: 1 / -1; margin: 0; font-size: .8rem; }
+
+.account-table-scroll { overflow-x: auto; background: var(--paper); border: 1px solid var(--rule); border-radius: var(--r-sm); }
+.account-members { min-width: 560px; }
+table.data.account-members th, table.data.account-members td { text-align: left; vertical-align: middle; }
+table.data.account-members th:last-child, table.data.account-members td:last-child { text-align: right; }
+.account-members td:first-child { min-width: 11em; }
+.member-name { display: block; font-weight: 600; color: var(--text-primary); }
+.member-username { display: block; margin-top: 2px; font-size: .8rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.member-state { display: inline-block; padding: 2px 8px; border: 1px solid var(--rule); border-radius: var(--r-sm); font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.member-state[data-state="active"] { color: var(--status-info); }
+.member-state[data-state="pending"] { color: var(--status-caution); }
+.member-state[data-state="disabled"] { color: var(--status-neutral); }
+.account-actions { display: inline-flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.account-members-note { margin: 14px 0 0; font-size: .8rem; color: var(--text-secondary); max-width: 62ch; }
+
+@media (max-width: 760px) {
+  .login-desk { display: block; padding: 28px 20px; }.login-intro h1 { font-size: 36px; margin-top: 24px; }.account-boundaries { margin: 24px 0; }.login-form-section { margin-top: 28px; padding: 24px; }
+  .account-main { padding: 24px 16px; }
+  .account-section { grid-template-columns: 1fr; gap: 16px; padding: 24px 0; }
+  .account-profile { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
+  .account-invite-form { grid-template-columns: 1fr; }
+  .issued-link { grid-template-columns: 1fr; }
+  .issued-link button { justify-self: start; }
+}

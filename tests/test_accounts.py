@@ -318,13 +318,16 @@ class AccountsTests(unittest.TestCase):
         full = {key: 'synthetic' for key in (
             'freshness', 'expected_trading_day', 'latest_completed_quote_date',
             'latest_institutional_date', 'latest_valuation_date', 'latest_market_summary_date',
-            'internal_hole_detected', 'internal_hole_check_source', 'current_status', 'research_benchmark')}
+            'internal_hole_detected', 'internal_hole_check_source', 'current_status', 'research_benchmark',
+            'pending_missing_dates', 'pending_missing_dates_source')}
         full.update({'last_error': 'private diagnostic', 'config': {}, 'recent_runs': []})
         with patch.object(data_freshness, 'status', return_value=full):
             response = self.login().get('/api/market/freshness')
         self.assertEqual(response.status_code, 200)
         for key in ('last_error', 'config', 'recent_runs'):
             self.assertNotIn(key, response.json())
+        # Members need the evidence source to label pending sessions as trading days or an estimate.
+        self.assertEqual(response.json()['pending_missing_dates_source'], 'synthetic')
 
     def test_optimization_cache_and_child_rows_are_owner_scoped(self):
         with identity.actor_scope(self.owner), self.engine.begin() as conn:

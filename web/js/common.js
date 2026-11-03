@@ -13,9 +13,10 @@ const NAV_CARET = `<svg class="nav-caret" viewBox="0 0 10 6" width="10" height="
 function renderNav() {
   const here = location.pathname.split("/").pop() || "index.html";
   const stage = here === "strategy.html" ? (qs("optimization") ? "參數穩健性" : qs("walkforward") ? "樣本外驗證" : "策略實驗室") : "";
-  const current = here === "account.html" ? "帳號與存取" : here === "stock.html" ? "個股研究" :
-    NAV_GROUPS.flatMap(group => group[1]).find(([href, label]) => href.split("?")[0] === here && (!stage || label === stage))?.[1] || "儀表板";
-  const groupName = here === "account.html" ? "個人設定" : here === "stock.html" ? "市場研究" : NAV_GROUPS.find(([, links]) => links.some(([, label]) => label === current))?.[0] || "市場研究";
+  const ACCOUNT_PAGES = { "account.html": ["個人設定", "帳號與存取"], "maintenance.html": ["管理", "資料維護"] };
+  const current = ACCOUNT_PAGES[here]?.[1] || (here === "stock.html" ? "個股研究" :
+    NAV_GROUPS.flatMap(group => group[1]).find(([href, label]) => href.split("?")[0] === here && (!stage || label === stage))?.[1] || "儀表板");
+  const groupName = ACCOUNT_PAGES[here]?.[0] || (here === "stock.html" ? "市場研究" : NAV_GROUPS.find(([, links]) => links.some(([, label]) => label === current))?.[0] || "市場研究");
   const nav = document.createElement("nav");
   nav.className = "topbar";
   nav.setAttribute("aria-label", "全站導覽");
@@ -159,8 +160,9 @@ function renderNav() {
       }
     }
   });
-  /* 導覽選單：點擊或滑鼠停留開啟；滑鼠移開、點擊外部、Esc、焦點離開皆關閉。 */
-  const groups = [...nav.querySelectorAll(".nav-group")];
+  /* 導覽選單：點擊或滑鼠停留開啟；滑鼠移開、點擊外部、Esc、焦點離開皆關閉。
+     帳號選單在登入身分讀到後才加入，沿用同一套開關行為。 */
+  const groups = [];
   const mobile = matchMedia("(max-width: 760px)");
   let openGroup = null, openedByHover = false, hoverTimer;
   const setOpen = (group, byHover = false) => {
@@ -171,7 +173,8 @@ function renderNav() {
     });
     openGroup = group; openedByHover = !!group && byHover;
   };
-  groups.forEach(group => {
+  const addGroup = group => {
+    groups.push(group);
     const trigger = group.querySelector(".nav-trigger");
     trigger.addEventListener("click", () => {
       // 滑鼠停留已先開啟時，點擊是「留著」而不是「關閉」
@@ -194,11 +197,13 @@ function renderNav() {
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       e.preventDefault();
       if (openGroup !== group) setOpen(group);
-      const items = [...group.querySelectorAll("a.navlink")];
+      const items = [...group.querySelectorAll("a.navlink, button.navlink")];
       const at = items.indexOf(document.activeElement), step = e.key === "ArrowDown" ? 1 : -1;
       items[at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length]?.focus();
     });
-  });
+  };
+  nav.querySelectorAll(".nav-group").forEach(addGroup);
+  renderNav.addGroup = addGroup;
   document.addEventListener("pointerdown", e => {
     if (openGroup && !openGroup.contains(e.target)) setOpen(null);
   });
@@ -353,13 +358,39 @@ function qs(name) {
 
 renderNav();
 
+/* 右上角帳號選單：個人設定、管理員的資料維護與登出集中在同一處。 */
+function renderAccountMenu(user) {
+  const topbar = document.querySelector('.topbar');
+  if (!topbar) return;
+  const here = location.pathname.split('/').pop();
+  const admin = user.role === 'admin';
+  const links = [['account.html', '帳號與存取'], ...(admin ? [['maintenance.html', '資料維護']] : [])];
+  const group = document.createElement('div');
+  group.className = 'nav-group account-menu';
+  group.innerHTML = `<button type="button" class="nav-trigger account-trigger" aria-expanded="false" aria-controls="nav-menu-account">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9.25"/><circle cx="12" cy="9" r="3"/><path d="M5.4 18.4a6.8 6.8 0 0 1 13.2 0"/></svg>${NAV_CARET}</button>
+    <div class="nav-items account-items" id="nav-menu-account" hidden>
+      <p class="account-menu-who"><strong></strong><span></span></p>
+      ${links.map(([href, label]) => `<a class="navlink ${here === href ? 'active' : ''}" ${here === href ? 'aria-current="page"' : ''} href="${href}">${label}</a>`).join('')}
+      ${user.auth_mode === 'basic' ? '' : '<button type="button" class="navlink account-logout">登出</button>'}
+    </div>`;
+  const trigger = group.querySelector('.account-trigger');
+  trigger.setAttribute('aria-label', `帳號選單：${user.display_name}`);
+  trigger.title = user.display_name;
+  group.querySelector('.account-menu-who strong').textContent = user.display_name;
+  group.querySelector('.account-menu-who span').textContent = `${user.username || ''} · ${admin ? '管理員' : '成員'}`;
+  group.querySelector('.account-logout')?.addEventListener('click', async event => {
+    event.currentTarget.disabled = true;
+    try { await api('/api/auth/logout', { method: 'POST', body: {} }); location.replace('/login.html'); }
+    catch (error) { event.currentTarget.disabled = false; toastError(`登出未完成：${error.message}`); }
+  });
+  topbar.append(group);
+  renderNav.addGroup?.(group);
+}
+
 window.accountReady = api('/api/auth/me').then(user => {
   document.querySelectorAll('[data-admin]').forEach(el => { el.hidden = user.role !== 'admin'; });
-  const link = document.createElement('a'); link.href = '/account.html'; link.className = 'account-nav';
-  link.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9.25"/><circle cx="12" cy="9" r="3"/><path d="M5.4 18.4a6.8 6.8 0 0 1 13.2 0"/></svg>';
-  link.title = '帳號與存取'; link.setAttribute('aria-label', `帳號與存取：${user.display_name}`);
-  if (location.pathname.endsWith('/account.html')) link.setAttribute('aria-current', 'page');
-  document.querySelector('.topbar')?.append(link);
+  renderAccountMenu(user);
   return user;
 });
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });

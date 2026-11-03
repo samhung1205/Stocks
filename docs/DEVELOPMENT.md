@@ -23,7 +23,7 @@ Stage L1/L1.1 的自動更新只處理每日盤後輕量層資料，不寫盤中
 
 預設 `AUTO_REFRESH_CHECK_TIME=15:05`，但目前 `app/scheduler.py` 的 `CronTrigger` 依小時範圍和 15 分鐘格點落在 15:00、15:15…，沒有精確套用設定的分鐘。伺服器停止或電腦睡眠期間不執行排程；啟動時嘗試 catch-up，結果仍須由缺失交易日與 freshness 回應確認。每月 10–12 日另排程取得月營收。
 
-儀表板管理員使用 `GET /api/admin/data-freshness`，成員使用 `/api/market/freshness`（不含 runner logs/errors/config）。來源查詢與缺漏判定、有限重試、共用鎖及快取契約見 [L1 報告](history/stage-l1-daily-auto-refresh-report.md)、[L1.1 報告](history/stage-l1-1-daily-refresh-hardening-report.md) 及 [AGENTS.md](../AGENTS.md)。
+儀表板與資料維護頁的管理員使用 `GET /api/admin/data-freshness`，成員使用 `/api/market/freshness`（不含 runner logs/errors/config，含 `pending_missing_dates_source`）。來源查詢與缺漏判定、有限重試、共用鎖及快取契約見 [L1 報告](history/stage-l1-daily-auto-refresh-report.md)、[L1.1 報告](history/stage-l1-1-daily-refresh-hardening-report.md) 及 [AGENTS.md](../AGENTS.md)。
 
 ### 設定載入順序與格式
 
@@ -144,7 +144,7 @@ export AUTO_REFRESH_CHECK_TIME=15:05             # 盤後檢查設定；目前�
 export AUTO_REFRESH_POLL_INTERVAL_MINUTES=15     # 檢查時間之後多久 poll 一次
 export AUTO_REFRESH_MAX_RETRIES=16                # 單一交易日最多重試幾次
 export AUTO_REFRESH_RETRY_WINDOW_MINUTES=240     # 超過這個時間窗就停止重試（保留 last error，見 freshness 狀態）
-export AUTO_REFRESH_STATUS_CACHE_SECONDS=60      # Stage L1.1：/api/admin/data-freshness 快取官方交易日查詢結果的秒數，避免 dashboard 20 秒 poll 打上游
+export AUTO_REFRESH_STATUS_CACHE_SECONDS=60      # Stage L1.1：/api/admin/data-freshness 快取官方交易日查詢結果的秒數，避免 dashboard／資料維護頁 poll（更新中 20 秒、落後 60 秒、已核實 5 分鐘）打上游
 ```
 
 判斷「今天缺哪幾個交易日」一律以實際缺失的 session 數為準（優先用 Strategy Lab 回補的 `trading_calendar`；沒有時退回平日粗估但只往前補、不回頭猜過去），不是單看 `MAX(daily_quotes.date)` 或日曆天數差——避免「中間某個交易日缺失，但比它晚的日期已入庫」被誤判為已同步。詳見 [docs/history/stage-l1-1-daily-refresh-hardening-report.md](history/stage-l1-1-daily-refresh-hardening-report.md)。
@@ -200,7 +200,7 @@ docs/         # 文件導覽 + 開發/架構/契約/狀態/部署參考；histor
 
 ## 首次使用（Strategy Lab 資料基礎）
 
-Strategy Lab 需要比基本面分析更長的歷史資料（5 年價量、逐檔財報）。Dashboard →「資料維護」→「Strategy Lab 資料基礎」可建立、續跑 25 單位、暫停及查看進度；也可用 CLI：
+Strategy Lab 需要比基本面分析更長的歷史資料（5 年價量、逐檔財報）。管理員由右上角帳號選單 →「資料維護」→「Strategy Lab 5 年歷史回補」可建立、續跑 25 單位、暫停及查看進度；也可用 CLI：
 
 ```bash
 uv run python -m app.backfill create --start 2026-09-16 --end 2026-09-18 --stocks 2330,5347   # 小範圍驗證

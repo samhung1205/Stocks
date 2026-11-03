@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>資料維護 — 台股分析</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<main class="maintenance-main">
+  <header class="desk-page-head"><div><h1>資料維護</h1><p class="muted">共享市場資料的更新、修復與回補。一般查看資料狀態請回儀表板。</p></div><div class="desk-asof">市場資料截至 <strong id="dashboard-asof">讀取中…</strong><span id="asof-lag" class="asof-lag" hidden></span><a id="freshness-indicator" class="freshness-indicator" href="#maintenance-status" aria-controls="maintenance-status">正在確認資料狀態</a></div></header>
+
+  <p id="maintenance-denied" class="maintenance-denied" hidden>這一頁只開放管理員使用。資料日期與缺漏可在<a href="index.html#data-status-details">儀表板的資料狀態</a>查看。</p>
+
+  <div class="maintenance-body" data-admin hidden>
+    <section id="maintenance-status" class="maintenance-section" aria-labelledby="status-title" tabindex="-1">
+      <div class="maintenance-section-head">
+        <h2 id="status-title">每日資料狀態</h2>
+        <p class="muted">平日盤後自動檢查官方收盤資料；這裡列出各資料集的核對結果與修復工具。</p>
+      </div>
+      <div class="maintenance-section-body">
+        <section class="freshness-alert" id="stale-banner" aria-label="資料更新提醒" hidden>
+          <div role="status" aria-live="polite" aria-atomic="true"><strong id="stale-title"></strong><span id="stale-text"></span> <span id="stale-retry"></span></div>
+        </section>
+        <div class="scroll-x" tabindex="0" role="region" aria-label="各資料集更新狀態">
+          <table class="data maintenance-table"><caption class="sr-only">資料日期、完整性與需要處理的缺漏</caption>
+            <thead><tr><th scope="col" class="l">資料</th><th scope="col" class="l">最新日期</th><th scope="col" class="l">狀態與說明</th></tr></thead>
+            <tbody id="dataset-status-rows"><tr><td colspan="3" class="l muted">正在確認…</td></tr></tbody>
+          </table>
+        </div>
+        <ul class="maintenance-actions" aria-label="每日資料修復">
+          <li><button id="btn-stale-update" class="ghost" type="button">更新最新交易日</button><span>只抓最新一個交易日；不補較舊的缺漏。</span></li>
+          <li><button id="btn-repair-light" class="ghost" type="button">修復近 30 日缺漏</button><span>重抓近 30 天的官方收盤與法人資料，完成後重新核對。</span></li>
+          <li><button id="btn-benchmark" class="ghost" type="button">補齊研究基準</button><span>只更新 Strategy Lab 使用的 TAIEX_TR 總報酬基準，不影響每日行情。</span></li>
+        </ul>
+        <p id="repair-message" class="maintenance-message" role="status"></p>
+      </div>
+    </section>
+
+    <section class="maintenance-section" aria-labelledby="setup-title">
+      <div class="maintenance-section-head">
+        <h2 id="setup-title">資料庫與首次準備</h2>
+        <p class="muted">空白資料庫依序完成以下步驟。已有資料時只需處理缺漏，不必重做。</p>
+      </div>
+      <div class="maintenance-section-body">
+        <p class="maintenance-db" id="db-status">讀取資料庫概況…</p>
+        <ol class="maintenance-steps">
+          <li><div><strong>同步股票清單</strong><span>取得上市、上櫃股票代號與產業。</span></div><button id="btn-sync" class="ghost" type="button">同步股票清單</button></li>
+          <li><div><strong>更新最新交易日</strong><span>使用上方「每日資料狀態」的更新工具。</span></div></li>
+          <li><div><strong>回填 180 天歷史</strong><span>在背景執行約 10 分鐘，供均線與法人連買篩選。</span></div><button id="btn-backfill" class="ghost" type="button">回填 180 天歷史</button></li>
+          <li><div><strong>取得全市場月營收（13 個月）</strong><span>供營收類篩選使用。</span></div><button id="btn-revenue" class="ghost" type="button">取得月營收</button></li>
+        </ol>
+        <p class="maintenance-note">平日盤後預設 15:05 起自動檢查，失敗時在有限次數內重試。電腦睡眠而錯過排程時，下次啟動服務會自動補齊，不需手動逐日更新。</p>
+      </div>
+    </section>
+
+    <section class="maintenance-section" aria-labelledby="history-title">
+      <div class="maintenance-section-head">
+        <h2 id="history-title">Strategy Lab 5 年歷史回補</h2>
+        <p class="muted">先以小範圍驗證，再執行完整工作。全市場歷史與逐檔資料可能需要數小時；服務關閉後可用同一工作續跑。每次最多執行 100 個單位。</p>
+      </div>
+      <div class="maintenance-section-body">
+        <div class="maintenance-fields">
+          <label>開始日期<input id="history-start" type="date"></label>
+          <label>結束日期<input id="history-end" type="date"></label>
+          <label>近一年日均成交金額門檻（新台幣）<input id="history-threshold" type="number" min="0" step="1000000" value="30000000"></label>
+        </div>
+        <div class="maintenance-job-actions">
+          <button id="history-create" class="ghost" type="button">建立回補工作</button>
+          <label>工作<select id="history-jobs" aria-label="回補工作"></select></label>
+          <button id="history-resume" class="ghost" type="button">續跑 25 個單位</button>
+          <button id="history-pause" class="ghost" type="button">完成本單位後暫停</button>
+          <button id="history-refresh" class="ghost" type="button">更新進度</button>
+        </div>
+        <pre id="history-progress" class="maintenance-progress" aria-live="polite">尚未載入</pre>
+        <p class="maintenance-note">公告日期分為實際公告（Actual）、FinMind 入庫日（Observed）與推估期限（Assumed）三種。嚴格的資料查詢會排除推估期限，公布當天也尚不可用。歷史修訂版本、完整下市與轉板歷程仍有缺口。</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="js/common.js"></script>
+<script src="js/data-status.js"></script>
+<script src="js/maintenance.js"></script>
+<script src="js/data-maintenance.js" defer></script>
+</body>
+</html>

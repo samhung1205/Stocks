@@ -67,7 +67,12 @@
     const body = el('members-body'); body.replaceChildren();
     rows.forEach(user => {
       const tr = document.createElement('tr');
-      [user.display_name + ' / ' + user.username, user.role === 'admin' ? '管理員' : '成員', user.active ? '已啟用' : user.configured ? '已停用' : '待設定密碼'].forEach(value => { const td = document.createElement('td'); td.textContent = value; tr.append(td); });
+      const cell = (...children) => { const td = document.createElement('td'); td.append(...children); tr.append(td); };
+      const span = (className, text, state) => { const node = document.createElement('span'); node.className = className; node.textContent = text; if (state) node.dataset.state = state; return node; };
+      cell(span('member-name', user.display_name), span('member-username', user.username));
+      cell(user.role === 'admin' ? '管理員' : '成員');
+      const [state, label] = user.active ? ['active', '已啟用'] : user.configured ? ['disabled', '已停用'] : ['pending', '待設定密碼'];
+      cell(span('member-state', label, state));
       const td = document.createElement('td'); const actions = document.createElement('div'); actions.className = 'account-actions';
       function action(label, method, suffix, payload, confirmation) {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'ghost small'; button.textContent = label; button.setAttribute('aria-label', `${label}：${user.display_name} / ${user.username}`);
@@ -90,9 +95,11 @@
   form('invite-form', async () => { await showLink(await request('/api/admin/accounts/invite', 'POST', {username: el('invite-username').value, display_name: el('invite-name').value})); el('invite-form').reset(); await loadMembers(); message('邀請已建立，請複製連結並私下傳送。'); });
   el('copy-link').addEventListener('click', async () => { try { await navigator.clipboard.writeText(el('token-link').value); message('連結已複製'); } catch { el('token-link').focus(); el('token-link').select(); message('請手動複製選取的連結'); } });
   window.accountReady.then(async user => {
-    el('account-identity').textContent = `${user.display_name} / ${user.username || ''} · ${user.role === 'admin' ? '管理員' : '成員'}`;
-    if (user.auth_mode === 'basic') { el('change-password-form').hidden = true; el('logout-button').hidden = true; message('目前為舊版單人模式。請先依開發文件啟用帳號系統。'); return; }
+    el('profile-name').textContent = user.display_name;
+    el('profile-username').textContent = user.username || '—';
+    el('profile-role').textContent = user.role === 'admin' ? '管理員' : '成員';
+    if (user.auth_mode === 'basic') { document.querySelector('.account-password-section').hidden = true; el('logout-button').hidden = true; message('目前為舊版單人模式。請先依開發文件啟用帳號系統。'); return; }
     el('account-description').textContent = user.role === 'admin' ? '管理自己的登入方式，以及成員邀請與存取權限。' : '管理自己的登入方式；邀請與帳號恢復請聯絡管理員。';
-    if (user.role === 'admin') { el('member-management').hidden = false; document.querySelector('.account-password-section').before(el('member-management')); await loadMembers(); }
+    if (user.role === 'admin') { el('member-management').hidden = false; await loadMembers(); }
   }).catch(error => message(error.message, true));
 })();

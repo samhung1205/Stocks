@@ -610,5 +610,6 @@ def public_status() -> dict:
             'latest_institutional_date', 'latest_valuation_date',
             'latest_market_summary_date', 'internal_hole_detected',
             'internal_hole_check_source', 'current_status', 'research_benchmark',
-            'datasets', 'retry_state', 'pending_missing_dates', 'retry_budget_exhausted')
+            'datasets', 'retry_state', 'pending_missing_dates', 'pending_missing_dates_source',
+            'retry_budget_exhausted')
     return {key: full[key] for key in keys if key in full}
